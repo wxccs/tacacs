@@ -20,10 +20,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache: true
@@ -54,7 +54,7 @@ jobs:
 
       - name: Upload coverage
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.out
@@ -64,19 +64,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: "1.26"
           cache: true
 
       - name: golangci-lint
-        # golangci-lint-action v7+ supports golangci-lint v2; v6 supports v1
-        # only. The v1 binary (built with Go 1.24) cannot analyze code
+        # golangci-lint-action v9 supports golangci-lint v2 (v7+); v6 supports
+        # v1 only. The v1 binary (built with Go 1.24) cannot analyze code
         # targeting Go 1.26, so v2 is required.
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
           args: --timeout=5m
