@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# Example: TACACS+ over TLS 1.3 with inline certificates (RFC 9950 Appendix B).
+server:
+  - name: instance-1
+    server-type: authentication
+    domain-name: tacacs.example.com
+    sni-enabled: true
+    address: 2001:db8::1
+    port: 1234
+    security:
+      tls:
+        server-authentication:
+          ca-certs:
+            inline-definition:
+              certificate:
+                - name: CA-Certificate-1
+                  cert-data: "REPLACE_WITH_BASE64_CA_CERT"
+        hello-params:
+          tls-versions:
+            min: ietf-tls-common:tls13
+            max: ietf-tls-common:tls13
+          cipher-suites:
+            cipher-suite:
+              - TLS_AES_128_GCM_SHA256
+    single-connection: false
+    timeout: 10
