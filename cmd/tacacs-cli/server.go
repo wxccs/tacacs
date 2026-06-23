@@ -28,6 +28,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/wxccs/tacacs/server"
 	"github.com/wxccs/tacacs/transport"
 	"github.com/wxccs/tacacs/types"
@@ -66,12 +67,20 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 
 	var handler server.Handler = &staticHandler{users: map[string]string{"admin": "admin123"}}
 	if serverCfg != "" {
-		cfg, err := yang.Load(serverCfg)
+		// The config file may be a user/policy config (UserConfig) or a YANG
+		// server-list config. Try the user config first.
+		uc, err := server.LoadUserConfig(serverCfg)
 		if err != nil {
-			return fmt.Errorf("load config: %w", err)
+			// Fall back to the YANG server-list config (no users; static handler).
+			cfg, err2 := yang.Load(serverCfg)
+			if err2 != nil {
+				return fmt.Errorf("load config: %w", err)
+			}
+			log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d server(s) from YANG config", len(cfg.Servers))
+		} else {
+			handler = server.NewConfigHandler(uc)
+			log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d user(s) from config", len(uc.Users))
 		}
-		handler = configHandler(cfg)
-		log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d server(s) from config", len(cfg.Servers))
 	}
 
 	srv := server.New(server.Config{Handler: handler, Secret: []byte(secret), Mode: mode(), AllowUnencrypted: false})
@@ -182,21 +191,6 @@ func (h *staticHandler) Authorize(ctx context.Context, ac server.AuthorContext) 
 
 func (h *staticHandler) Account(ctx context.Context, ac server.AcctContext) (server.AcctDecision, error) {
 	return server.AcctDecision{Status: types.AcctStatusSuccess}, nil
-}
-
-// configHandler adapts a yang.Config into a Handler. It uses the configured
-// servers to derive a stand-in user table keyed on the first server's name and
-// shared secret (a full user database would be loaded separately).
-func configHandler(cfg *yang.Config) server.Handler {
-	users := map[string]string{"admin": "admin123"}
-	for _, s := range cfg.Servers {
-		if s.Security.SharedSecret != nil && s.Name != "" {
-			// Expose the configured server name as a known user with the shared
-			// secret as its password, so the config is at least exercised.
-			users[s.Name] = *s.Security.SharedSecret
-		}
-	}
-	return &staticHandler{users: users}
 }
 
 // keep viper referenced; reserved for future richer config binding.

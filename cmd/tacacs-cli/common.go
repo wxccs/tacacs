@@ -26,6 +26,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
 	"github.com/wxccs/tacacs/transport"
 	"github.com/wxccs/tacacs/types"
 )

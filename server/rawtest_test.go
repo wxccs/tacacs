@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
 	"github.com/wxccs/tacacs/crypto"
 	"github.com/wxccs/tacacs/packet"
 	"github.com/wxccs/tacacs/types"

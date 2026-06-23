@@ -18,6 +18,7 @@ package main
 
 import (
 	"github.com/sirupsen/logrus"
+
 	"github.com/wxccs/tacacs/types"
 )
 

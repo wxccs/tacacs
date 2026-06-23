@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
 	tacerrs "github.com/wxccs/tacacs/errors"
 	"github.com/wxccs/tacacs/types"
 )

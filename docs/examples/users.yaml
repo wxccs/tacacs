@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# Example: TACACS+ test server user database and command policy.
+#
+# Passwords are bcrypt hashes. Generate one with, for example:
+#   htpasswd -nbB admin 'password'
+# or in Go:
+#   bcrypt.GenerateFromPassword([]byte("password"), bcrypt.DefaultCost)
+#
+# Set allow-plaintext: true ONLY for local development to use cleartext
+# passwords; never do this in production.
+
+users:
+  - username: admin
+    password: "$2a$10$REPLACE_WITH_BCRYPT_HASH_OF_ADMIN_PASSWORD"
+    auth-type: pap
+  - username: operator
+    password: "$2a$10$REPLACE_WITH_BCRYPT_HASH_OF_OPERATOR_PASSWORD"
+    auth-type: ascii
+
+policy:
+  allow-commands:
+    - "show *"
+    - "exit"
+    - "enable"
+  deny-commands:
+    - "show secret"
+    - "configure *"

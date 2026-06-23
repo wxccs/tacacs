@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
 	"github.com/wxccs/tacacs/client"
 	"github.com/wxccs/tacacs/types"
 )
