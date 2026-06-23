@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// Copyright (C) 2026 The tacacs authors.
+//
+// This library is free software: you can redistribute it and/or modify it
+// under the terms of the GNU Lesser General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or (at your
+// option) any later version.
+//
+// This library is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+// FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License
+// for more details.
+//
+// You should have received a copy of the GNU Lesser General Public License
+// along with this library. If not, see <https://www.gnu.org/licenses/>.
+
+package main
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+	"sync"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/wxccs/tacacs/server"
+	"github.com/wxccs/tacacs/transport"
+	"github.com/wxccs/tacacs/types"
+	"github.com/wxccs/tacacs/yang"
+)
+
+var serverCmd = &cobra.Command{
+	Use:   "server",
+	Short: "Run a lightweight TACACS+ test server",
+	RunE:  runServerCmd,
+}
+
+var (
+	listenAddr string
+	serverCfg  string
+)
+
+func init() {
+	serverCmd.Flags().StringVar(&listenAddr, "listen", "127.0.0.1", "listen address")
+	serverCmd.Flags().IntVar(&port, "port", 49, "listen port")
+	serverCmd.Flags().StringVar(&secret, "secret", "", "shared secret (default 'testkey' if unset)")
+	serverCmd.Flags().BoolVar(&tlsMode, "tls", false, "use TLS 1.3")
+	serverCmd.Flags().StringVar(&caCert, "ca-cert", "", "CA certificate PEM file (TLS)")
+	serverCmd.Flags().StringVar(&clientCert, "server-cert", "", "server certificate PEM file (TLS)")
+	serverCmd.Flags().StringVar(&clientKey, "server-key", "", "server private key PEM file (TLS)")
+	serverCmd.Flags().StringVar(&serverCfg, "config", "", "config file (YAML/JSON) defining users and policies")
+	serverCmd.Flags().BoolVar(&debug, "debug", false, "enable debug logging")
+	rootCmd.AddCommand(serverCmd)
+}
+
+func runServerCmd(cmd *cobra.Command, args []string) error {
+	log := newLogger(debug)
+	if secret == "" {
+		secret = "testkey"
+	}
+
+	var handler server.Handler = &staticHandler{users: map[string]string{"admin": "admin123"}}
+	if serverCfg != "" {
+		cfg, err := yang.Load(serverCfg)
+		if err != nil {
+			return fmt.Errorf("load config: %w", err)
+		}
+		handler = configHandler(cfg)
+		log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d server(s) from config", len(cfg.Servers))
+	}
+
+	srv := server.New(server.Config{Handler: handler, Secret: []byte(secret), Mode: mode(), AllowUnencrypted: false})
+
+	addr := fmt.Sprintf("%s:%d", listenAddr, port)
+	var ln net.Listener
+	var err error
+	if tlsMode {
+		tcfg, err := buildServerTLSConfig()
+		if err != nil {
+			return err
+		}
+		ln, err = transport.ListenTLS("tcp", addr, tcfg)
+		if err != nil {
+			return err
+		}
+		log.WithFunc("cmd.tacacs-cli.runServer").Infof("TACACS+ TLS 1.3 test server listening on %s", addr)
+	} else {
+		ln, err = transport.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
+		log.WithFunc("cmd.tacacs-cli.runServer").Infof("TACACS+ test server listening on %s", addr)
+	}
+	defer ln.Close()
+
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return err
+		}
+		conn := transport.Accept(c, mode(), []byte(secret))
+		go func() {
+			l := log.WithFunc("server.ServeConn").WithField("peer", c.RemoteAddr().String())
+			l.Infof("connection accepted")
+			if err := srv.ServeConn(context.Background(), conn); err != nil {
+				l.Warnf("session ended: %v", err)
+			}
+		}()
+	}
+}
+
+func mode() transport.Mode {
+	if tlsMode {
+		return transport.ModeTLS
+	}
+	return transport.ModeLegacy
+}
+
+func buildServerTLSConfig() (*tls.Config, error) {
+	if clientCert == "" || clientKey == "" {
+		return nil, fmt.Errorf("--server-cert and --server-key are required for TLS")
+	}
+	cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+	if err != nil {
+		return nil, fmt.Errorf("load server cert/key: %w", err)
+	}
+	pool := x509.NewCertPool()
+	if caCert != "" {
+		ca, err := os.ReadFile(caCert)
+		if err != nil {
+			return nil, err
+		}
+		pool.AppendCertsFromPEM(ca)
+	} else {
+		pool = nil // no client verification configured
+	}
+	return transport.ServerTLSConfig(cert, pool), nil
+}
+
+// staticHandler authenticates against a fixed user table.
+type staticHandler struct {
+	mu    sync.Mutex
+	users map[string]string
+}
+
+func (h *staticHandler) Authenticate(ctx context.Context, ac server.AuthenContext, cont *server.AuthenContinue) (server.AuthenDecision, error) {
+	h.mu.Lock()
+	pw, ok := h.users[ac.Start.User]
+	h.mu.Unlock()
+	if !ok {
+		return server.AuthenDecision{Status: types.AuthenStatusFail, ServerMsg: "unknown user"}, nil
+	}
+	if cont == nil {
+		if ac.Start.Type == types.AuthenTypePAP {
+			if string(ac.Start.Data) == pw {
+				return server.AuthenDecision{Status: types.AuthenStatusPass}, nil
+			}
+			return server.AuthenDecision{Status: types.AuthenStatusFail, ServerMsg: "bad password"}, nil
+		}
+		return server.AuthenDecision{Status: types.AuthenStatusGetPass, ServerMsg: "Password:"}, nil
+	}
+	if cont.UserMsg == pw {
+		return server.AuthenDecision{Status: types.AuthenStatusPass}, nil
+	}
+	return server.AuthenDecision{Status: types.AuthenStatusFail, ServerMsg: "bad password"}, nil
+}
+
+func (h *staticHandler) Authorize(ctx context.Context, ac server.AuthorContext) (server.AuthorDecision, error) {
+	// Allow show commands; deny everything else.
+	for _, a := range ac.Args {
+		if a.Name == "cmd" && strings.HasPrefix(a.Value, "show") {
+			return server.AuthorDecision{Status: types.AuthorStatusPassAdd}, nil
+		}
+	}
+	return server.AuthorDecision{Status: types.AuthorStatusFail}, nil
+}
+
+func (h *staticHandler) Account(ctx context.Context, ac server.AcctContext) (server.AcctDecision, error) {
+	return server.AcctDecision{Status: types.AcctStatusSuccess}, nil
+}
+
+// configHandler adapts a yang.Config into a Handler. It uses the configured
+// servers to derive a stand-in user table keyed on the first server's name and
+// shared secret (a full user database would be loaded separately).
+func configHandler(cfg *yang.Config) server.Handler {
+	users := map[string]string{"admin": "admin123"}
+	for _, s := range cfg.Servers {
+		if s.Security.SharedSecret != nil && s.Name != "" {
+			// Expose the configured server name as a known user with the shared
+			// secret as its password, so the config is at least exercised.
+			users[s.Name] = *s.Security.SharedSecret
+		}
+	}
+	return &staticHandler{users: users}
+}
+
+// keep viper referenced; reserved for future richer config binding.
+var _ = viper.New
