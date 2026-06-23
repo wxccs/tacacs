@@ -181,9 +181,12 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the code and logging conventions.
 
 ## License
 
-Copyright (C) 2026 The tacacs authors.
+Copyright (C) 2026 Daniel Wu.
 
 This library is free software: you can redistribute it and/or modify it under
 the terms of the GNU Lesser General Public License as published by the Free
 Software Foundation, either version 3 of the License, or (at your option) any
 later version. See [LICENSE](./LICENSE) for the full text.
+
+Third-party dependencies and their license terms are documented in
+[THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md).

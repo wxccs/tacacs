@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: LGPL-3.0-or-later
-# Copyright (C) 2026 The tacacs authors.
+# Copyright (C) 2026 Daniel Wu.
 #
 # CI workflow: format check, vet, lint and test the tacacs library.
 
