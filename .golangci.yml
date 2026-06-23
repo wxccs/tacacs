@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: LGPL-3.0-or-later
+# Copyright (C) 2026 The tacacs authors.
+#
+# golangci-lint configuration for the tacacs library.
+
+run:
+  timeout: 5m
+  go: "1.26"
+
+linters:
+  disable-all: true
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - errcheck
+    - gosimple
+    - revive
+    - misspell
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/wxccs/tacacs
+  revive:
+    severity: warning
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - revive
+  max-issues-per-linter: 0
+  max-same-issues: 0
