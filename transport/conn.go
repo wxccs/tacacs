@@ -62,6 +62,16 @@ func (c *Conn) Close() error { return c.raw.Close() }
 // SetDeadline sets the read and write deadlines.
 func (c *Conn) SetDeadline(t time.Time) error { return c.raw.SetDeadline(t) }
 
+// RemoteAddr returns the address of the remote peer.
+func (c *Conn) RemoteAddr() net.Addr { return c.raw.RemoteAddr() }
+
+// LocalAddr returns the address of the local end.
+func (c *Conn) LocalAddr() net.Addr { return c.raw.LocalAddr() }
+
+// UnderlyingConn returns the wrapped network connection, primarily for
+// inspecting TLS state (e.g. ConnectionState).
+func (c *Conn) UnderlyingConn() net.Conn { return c.raw }
+
 // ReadPacket reads one TACACS+ packet and de-obfuscates the body if the mode
 // is legacy and the unencrypted flag is clear. For TLS, the body is already
 // cleartext (protected by TLS); the unencrypted flag MUST be set.
