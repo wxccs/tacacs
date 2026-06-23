@@ -42,15 +42,112 @@ Requires Go 1.26 or later.
 
 ## Quick start
 
-The high-level `client` and `server` packages are added in later phases. Once
-available:
+### Client
 
 ```go
-import "github.com/wxccs/tacacs/client"
+import (
+    "context"
+    "github.com/wxccs/tacacs/client"
+    "github.com/wxccs/tacacs/transport"
+    "github.com/wxccs/tacacs/types"
+)
+
+func authenticate() error {
+    conn, err := transport.Dial(context.Background(), "tcp", "tacacs.example.com:49",
+        []byte("sharedsecret"))
+    if err != nil {
+        return err
+    }
+    defer conn.Close()
+
+    c, err := client.New(conn)
+    if err != nil {
+        return err
+    }
+    reply, err := c.Authenticate(context.Background(), client.AuthenRequest{
+        Action: types.AuthenLogin, Type: types.AuthenTypePAP, Service: types.AuthenServiceLogin,
+        User: "alice", Data: []byte("password"),
+    }, nil)
+    if err != nil {
+        return err
+    }
+    // reply.Status == types.AuthenStatusPass on success.
+    return nil
+}
 ```
 
-For now, the `packet`, `crypto`, `types` and `errors` packages are usable
-directly for low-level TACACS+ packet construction and inspection.
+For TLS 1.3 (RFC 9887), use `transport.DialTLS` with a `transport.TLSConfig`
+instead of `transport.Dial`.
+
+### Server
+
+Implement the `server.Handler` interface and serve connections:
+
+```go
+import (
+    "context"
+    "github.com/wxccs/tacacs/server"
+    "github.com/wxccs/tacacs/transport"
+    "github.com/wxccs/tacacs/types"
+)
+
+type myHandler struct{}
+
+func (myHandler) Authenticate(ctx context.Context, ac server.AuthenContext, cont *server.AuthenContinue) (server.AuthenDecision, error) {
+    // ...verify credentials...
+    return server.AuthenDecision{Status: types.AuthenStatusPass}, nil
+}
+func (myHandler) Authorize(ctx context.Context, ac server.AuthorContext) (server.AuthorDecision, error) {
+    return server.AuthenDecision{Status: types.AuthorStatusPassAdd}, nil
+}
+func (myHandler) Account(ctx context.Context, ac server.AcctContext) (server.AcctDecision, error) {
+    return server.AcctDecision{Status: types.AcctStatusSuccess}, nil
+}
+
+// ln is a net.Listener (use transport.ListenTLS for TLS 1.3).
+srv := server.New(server.Config{Handler: myHandler{}, Secret: []byte("sharedsecret"), Mode: transport.ModeLegacy})
+for {
+    c, _ := ln.Accept()
+    conn := transport.Accept(c, transport.ModeLegacy, []byte("sharedsecret"))
+    go srv.ServeConn(context.Background(), conn)
+}
+```
+
+### Configuration (RFC 9950)
+
+Load a server list from YAML or JSON:
+
+```go
+import "github.com/wxccs/tacacs/yang"
+
+cfg, err := yang.Load("tacacs.yaml")
+// cfg.Servers is the unified, ordered server list.
+```
+
+See [`docs/examples/`](./docs/examples) for shared-secret and TLS example
+configurations matching the RFC 9950 appendices.
+
+### Command-line tool
+
+```bash
+# Run the test server
+tacacs-cli server --listen 127.0.0.1 --port 49 --secret testkey
+
+# Authenticate (client)
+tacacs-cli auth --server 127.0.0.1 --port 49 --secret testkey \
+    --username admin --password admin123 --type pap --output json
+
+# Authorize a command
+tacacs-cli authz --server 127.0.0.1 --port 49 --secret testkey \
+    --username admin --service shell --cmd "show version"
+
+# Accounting
+tacacs-cli acct --server 127.0.0.1 --port 49 --secret testkey \
+    --username admin --action start
+```
+
+For low-level packet construction and inspection, the `packet`, `crypto`,
+`types` and `errors` packages are usable directly.
 
 ## Project layout
 
