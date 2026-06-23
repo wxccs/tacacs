@@ -3,23 +3,22 @@
 This file documents the third-party Go modules used by the `tacacs` library
 ("the Library"), their copyright holders, and their license terms, together with
 a compatibility analysis against the Library's own license
-([LGPL-3.0-or-later](./LICENSE)).
+([MIT](./LICENSE)).
 
-The Library is licensed under the GNU Lesser General Public License v3.0 or
-later (LGPL-3.0-or-later). Copyright (C) 2026 Daniel Wu.
+The Library is licensed under the MIT License. Copyright (c) 2026 Daniel Wu.
 
 ## License compatibility summary
 
-All direct and transitive dependencies use permissive, LGPL-compatible licenses.
+All direct and transitive dependencies use permissive, MIT-compatible licenses.
 A full scan of the module graph (`go list -m all`, 35 modules at the time of
-writing) found **no copyleft (GPL/AGPL/LGPL) dependencies** other than this
-Library itself. The permissive licenses below (MIT, Apache-2.0, BSD-3-Clause)
-each allow use, modification and redistribution within an LGPL-licensed work,
-provided their respective notice and disclaimer conditions are met. There is
-**no license conflict** between the Library's LGPL-3.0 and any dependency.
+writing) found **no copyleft (GPL/AGPL/LGPL) dependencies**. The permissive
+licenses below (MIT, Apache-2.0, BSD-3-Clause) each allow use, modification and
+redistribution within an MIT-licensed work, provided their respective notice and
+disclaimer conditions are met. There is **no license conflict** between the
+Library's MIT license and any dependency.
 
-| Dependency | Version | License | LGPL-3.0 compatible |
-|------------|---------|---------|---------------------|
+| Dependency | Version | License | MIT compatible |
+|------------|---------|---------|----------------|
 | github.com/stretchr/testify | v1.11.1 | MIT | Yes |
 | github.com/spf13/cobra | v1.10.2 | Apache-2.0 | Yes |
 | github.com/spf13/viper | v1.21.0 | MIT | Yes |
@@ -37,8 +36,8 @@ provided their respective notice and disclaimer conditions are met. There is
   (`errors`, `types`, `packet`, `crypto`, `protocol`, `transport`, `legacy`).
 - **golang.org/x/crypto** provides `bcrypt` for the server-side password store
   (`server` package).
-- Apache-2.0 (cobra) is a permissive license and is compatible with LGPL-3.0;
-  no additional obligations beyond retaining the Apache NOTICE/LICENSE apply.
+- Apache-2.0 (cobra) is a permissive license and is compatible with MIT; no
+  additional obligations beyond retaining the Apache NOTICE/LICENSE apply.
 
 ## Dependency copyright notices
 

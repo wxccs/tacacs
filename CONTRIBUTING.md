@@ -16,8 +16,8 @@ Requires Go 1.26 or later.
 ## Code style
 
 - Format all Go sources with `gofmt`; run `make fmt` before committing.
-- Every source file begins with the LGPL-3.0-or-later SPDX header and the
-  copyright notice (copy it from any existing file).
+- Every source file begins with the MIT SPDX header and the copyright notice
+  (copy it from any existing file).
 - Comments, documentation and commit messages are written in English.
 - Commit messages follow `type(scope): description`
   (for example `feat(packet): implement header codec`).

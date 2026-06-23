@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: LGPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 # Example: TACACS+ test server user database and command policy.
 #
 # Passwords are bcrypt hashes. Generate one with, for example:
