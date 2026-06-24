@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -41,6 +43,10 @@ var (
 	accountingLog string
 	useSyslog     bool
 	watchConfig   bool
+	maxConns      int
+	readTimeout   time.Duration
+	idleTimeout   time.Duration
+	shutdownWait  time.Duration
 )
 
 func init() {
@@ -57,6 +63,10 @@ func init() {
 	serverCmd.Flags().StringVar(&accountingLog, "accounting-log", "", "path to append accounting records as JSONL; empty disables persistence")
 	serverCmd.Flags().BoolVar(&useSyslog, "syslog", false, "write accounting records to syslog (overrides --accounting-log when both are set)")
 	serverCmd.Flags().BoolVar(&watchConfig, "watch-config", false, "watch the --config file for changes and reload (UserConfig only)")
+	serverCmd.Flags().IntVar(&maxConns, "max-conns", 4096, "maximum concurrent connections; new connections beyond this are rejected (0 = unlimited)")
+	serverCmd.Flags().DurationVar(&readTimeout, "read-timeout", 30*time.Second, "per-packet body read timeout (0 = disabled)")
+	serverCmd.Flags().DurationVar(&idleTimeout, "idle-timeout", 0, "idle timeout waiting for the next packet on a connection (0 = disabled)")
+	serverCmd.Flags().DurationVar(&shutdownWait, "shutdown-timeout", 10*time.Second, "max time to drain in-flight connections on shutdown")
 	rootCmd.AddCommand(serverCmd)
 }
 
@@ -146,6 +156,8 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 		Mode:             mode(),
 		AllowUnencrypted: false,
 		Metrics:          metrics,
+		ReadTimeout:      readTimeout,
+		IdleTimeout:      idleTimeout,
 		Middleware: []server.Middleware{
 			server.RecoveryMiddleware(log),
 			server.LoggingMiddleware(log),
@@ -198,6 +210,14 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 	}
 	types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("TACACS+ server listening", "addr", addr, "mode", modeLabel)
 
+	// 6. Listen. SIGINT/SIGTERM triggers graceful shutdown: the listener is
+	//    closed, in-flight connections are signalled via context cancellation
+	//    and drained up to --shutdown-timeout, then force-closed.
+	connCtx, connCancel := context.WithCancel(context.Background())
+	defer connCancel()
+
+	tracker := newConnTracker()
+
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -209,20 +229,107 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 		}
 	}()
 
+	// sem caps concurrent connections; a nil sem means unlimited.
+	var sem chan struct{}
+	if maxConns > 0 {
+		sem = make(chan struct{}, maxConns)
+	}
+	var wg sync.WaitGroup
+
 	for {
 		c, err := ln.Accept()
 		if err != nil {
-			types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("listener closed; exiting")
-			return nil
+			// A temporary error (e.g. EMFILE under load) should not kill the
+			// listener; back off briefly and retry. A permanent error
+			// (listener closed on shutdown) ends the loop.
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("listener closed; draining")
+			break
+		}
+		// Reject the connection when at capacity rather than queueing it,
+		// bounding goroutine and memory growth under a connection flood.
+		if sem != nil {
+			select {
+			case sem <- struct{}{}:
+			default:
+				types.WithFunc(log, "server.ServeConn").With("peer", c.RemoteAddr().String()).
+					Warn("connection rejected: max-conns reached", "max_conns", maxConns)
+				_ = c.Close()
+				continue
+			}
 		}
 		conn := transport.Accept(c, mode(), []byte(secret))
-		go func() {
+		tracker.add(conn)
+		wg.Go(func() {
+			defer tracker.remove(conn)
+			if sem != nil {
+				defer func() { <-sem }()
+			}
 			l := types.WithFunc(log, "server.ServeConn").With("peer", c.RemoteAddr().String())
 			l.Info("connection accepted")
-			if err := srv.ServeConn(context.Background(), conn); err != nil {
+			if err := srv.ServeConn(connCtx, conn); err != nil {
 				l.Warn("session ended", "err", err)
 			}
-		}()
+		})
+	}
+
+	// Drain in-flight connections, bounded by --shutdown-timeout. On timeout
+	// we cancel their contexts and close the sockets so ServeConn loops
+	// unblock from any pending read and exit promptly.
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+		types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("all connections drained")
+	case <-time.After(shutdownWait):
+		n := tracker.len()
+		types.WithFunc(log, "cmd.tacacs-cli.runServer").Warn("drain timeout; force-closing in-flight connections", "timeout", shutdownWait, "remaining", n)
+		connCancel()
+		tracker.closeAll()
+		<-done
+	}
+	return nil
+}
+
+// connTracker records in-flight connections so a graceful shutdown can
+// force-close any that outlive the drain timeout (a blocking ReadPacket does
+// not observe context cancellation on its own). It is safe for concurrent use.
+type connTracker struct {
+	mu    sync.Mutex
+	conns map[*transport.Conn]struct{}
+}
+
+func newConnTracker() *connTracker {
+	return &connTracker{conns: make(map[*transport.Conn]struct{})}
+}
+
+func (t *connTracker) add(c *transport.Conn) {
+	t.mu.Lock()
+	t.conns[c] = struct{}{}
+	t.mu.Unlock()
+}
+
+func (t *connTracker) remove(c *transport.Conn) {
+	t.mu.Lock()
+	delete(t.conns, c)
+	t.mu.Unlock()
+}
+
+func (t *connTracker) len() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.conns)
+}
+
+func (t *connTracker) closeAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for c := range t.conns {
+		_ = c.Close()
 	}
 }
 

@@ -32,6 +32,15 @@ type Conn struct {
 	raw    net.Conn
 	mode   Mode
 	secret []byte
+	// idleTimeout bounds the wait for the next packet's header to arrive; it
+	// defends against idle/slow-loris connections that open and then stall. A
+	// value <= 0 disables the bound (single-connection deployments that
+	// legitimately keep a connection open between sessions may prefer this).
+	idleTimeout time.Duration
+	// readTimeout bounds the time to read a packet body once its header has
+	// arrived; it defends against a peer that dribbles a body slowly. A value
+	// <= 0 disables the bound.
+	readTimeout time.Duration
 }
 
 // NewConn wraps an established network connection. For ModeLegacy, secret is
@@ -42,6 +51,16 @@ func NewConn(c net.Conn, mode Mode, secret []byte) *Conn {
 
 // Mode returns the transport mode.
 func (c *Conn) Mode() Mode { return c.mode }
+
+// SetTimeouts configures the per-packet read deadlines applied by ReadPacket.
+// idle bounds the wait for the next packet's header; read bounds the body read
+// once the header has arrived. A value <= 0 for either disables that bound.
+// SetTimeouts is not safe for concurrent use with ReadPacket; callers should
+// set timeouts before serving the connection.
+func (c *Conn) SetTimeouts(idle, read time.Duration) {
+	c.idleTimeout = idle
+	c.readTimeout = read
+}
 
 // Close closes the underlying connection.
 func (c *Conn) Close() error { return c.raw.Close() }
@@ -62,8 +81,30 @@ func (c *Conn) UnderlyingConn() net.Conn { return c.raw }
 // ReadPacket reads one TACACS+ packet and de-obfuscates the body if the mode
 // is legacy and the unencrypted flag is clear. For TLS, the body is already
 // cleartext (protected by TLS); the unencrypted flag MUST be set.
+//
+// When idle/read timeouts are configured (see SetTimeouts) they are applied as
+// read deadlines: the idle timeout bounds the wait for the header, the read
+// timeout bounds the body read. Any configured deadline is cleared before
+// returning so it does not leak into subsequent writes.
 func (c *Conn) ReadPacket() (packet.Header, []byte, error) {
-	hdr, body, err := ReadPacket(c.raw)
+	if c.idleTimeout > 0 || c.readTimeout > 0 {
+		defer func() { _ = c.raw.SetReadDeadline(time.Time{}) }()
+	}
+	if c.idleTimeout > 0 {
+		if err := c.raw.SetReadDeadline(time.Now().Add(c.idleTimeout)); err != nil {
+			return packet.Header{}, nil, err
+		}
+	}
+	hdr, err := ReadHeader(c.raw)
+	if err != nil {
+		return hdr, nil, err
+	}
+	if c.readTimeout > 0 {
+		if err := c.raw.SetReadDeadline(time.Now().Add(c.readTimeout)); err != nil {
+			return hdr, nil, err
+		}
+	}
+	body, err := ReadBody(c.raw, hdr)
 	if err != nil {
 		return hdr, nil, err
 	}

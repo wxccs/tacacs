@@ -42,6 +42,15 @@ type Config struct {
 	// chain. The first entry runs outermost. When nil, the Server dispatches
 	// directly to the Handler with no middleware.
 	Middleware []Middleware
+	// ReadTimeout bounds the time to read a single packet body once its header
+	// has arrived, defending against a peer that dribbles a body slowly. A
+	// value <= 0 disables the bound (the default, preserving prior behavior).
+	ReadTimeout time.Duration
+	// IdleTimeout bounds the wait for the next packet on a connection,
+	// defending against idle/slow-loris connections. A value <= 0 disables the
+	// bound (the default). Single-connection deployments (RFC 8907 §4.3) that
+	// keep a connection open between sessions may prefer a generous value or 0.
+	IdleTimeout time.Duration
 }
 
 // Server accepts connections and dispatches packets to the Handler.
@@ -122,6 +131,9 @@ func (s *Server) AcceptConn(ctx context.Context, nc net.Conn) error {
 // ServeConn drives a single connection to completion, reading packets and
 // writing responses until the connection closes or an error occurs.
 func (s *Server) ServeConn(ctx context.Context, c *transport.Conn) error {
+	if s.cfg.ReadTimeout > 0 || s.cfg.IdleTimeout > 0 {
+		c.SetTimeouts(s.cfg.IdleTimeout, s.cfg.ReadTimeout)
+	}
 	var connFlags types.HeaderFlags
 	first := true
 	for {

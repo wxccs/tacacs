@@ -3,8 +3,12 @@
 
 GOCMD    := go
 PACKAGES := ./...
+# FUZZTIME bounds each fuzz target in `make fuzz`; override for longer local runs.
+FUZZTIME ?= 20s
+# FUZZPKGS lists packages whose decoders parse untrusted input.
+FUZZPKGS := ./crypto ./legacy ./packet ./transport ./types
 
-.PHONY: all fmt vet build test cover lint tidy clean
+.PHONY: all fmt vet build test cover lint tidy clean fuzz
 
 all: build
 
@@ -36,6 +40,15 @@ lint:
 ## tidy: tidy module dependencies.
 tidy:
 	$(GOCMD) mod tidy
+
+## fuzz: run every Fuzz* target briefly to catch parser crashes (FUZZTIME=20s).
+fuzz:
+	@for pkg in $(FUZZPKGS); do \
+		for fn in $$($(GOCMD) test -list '^Fuzz' $$pkg | grep '^Fuzz'); do \
+			echo ">>> $$pkg $$fn"; \
+			$(GOCMD) test $$pkg -run '^$$' -fuzz "^$$fn$$" -fuzztime=$(FUZZTIME) || exit 1; \
+		done; \
+	done
 
 ## clean: remove generated artifacts.
 clean:
