@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"net"
+	"time"
 
 	"github.com/wxccs/tacacs/crypto"
 	"github.com/wxccs/tacacs/errors"
@@ -24,29 +25,104 @@ type Config struct {
 	// AllowUnencrypted permits TAC_PLUS_UNENCRYPTED_FLAG on legacy connections
 	// (RFC 8907 §10.5.2). Defaults to false.
 	AllowUnencrypted bool
+	// SessionTTL is the idle TTL for authentication sessions. A ttl <= 0
+	// falls back to a 5-minute default. Sessions idle past the TTL are
+	// evicted by a background sweep goroutine.
+	SessionTTL time.Duration
+	// Metrics receives observability observations. A nil value falls back to
+	// NopMetrics, so the Server is silent by default.
+	Metrics Metrics
+	// SecretProvider selects the shared secret and transport mode for an
+	// incoming connection based on the client's remote address. When nil,
+	// the Server uses StaticSecret{Secret, Mode} (the original single-secret
+	// behavior). Set a PrefixSecretProvider for multi-NAS deployments.
+	SecretProvider SecretProvider
+	// Middleware is an ordered list of middleware applied to the dispatch
+	// chain. The first entry runs outermost. When nil, the Server dispatches
+	// directly to the Handler with no middleware.
+	Middleware []Middleware
 }
 
 // Server accepts connections and dispatches packets to the Handler.
 type Server struct {
 	cfg    Config
 	policy crypto.Policy
-	// sessions maps a session_id to the START context accumulated for an
-	// interactive authentication, so a CONTINUE can be matched to its START.
-	sessions map[uint32]AuthenStart
+	// sessions tracks interactive authentication sessions by SessionID so a
+	// CONTINUE can be matched to its START. It is concurrency-safe: each
+	// accepted connection runs in its own goroutine and all share this map.
+	sessions *sessionManager
+	// handler is the terminal RequestHandler (a handlerAdapter wrapping
+	// Config.Handler) composed with Config.Middleware via Chain.
+	handler RequestHandler
+	// sweepCtx / sweepCancel drive the background session-TTL sweeper.
+	sweepCtx    context.Context
+	sweepCancel context.CancelFunc
 }
 
-// New creates a Server.
+// New creates a Server and starts a background goroutine that evicts idle
+// sessions past Config.SessionTTL. Callers should call Close to stop the
+// sweeper when the Server is no longer in use; failing to do so leaks the
+// goroutine.
 func New(cfg Config) *Server {
-	return &Server{
-		cfg:      cfg,
-		policy:   crypto.Policy{AllowUnencrypted: cfg.AllowUnencrypted || cfg.Mode == transport.ModeTLS},
-		sessions: make(map[uint32]AuthenStart),
+	if cfg.Metrics == nil {
+		cfg.Metrics = NopMetrics()
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &Server{
+		cfg:         cfg,
+		policy:      crypto.Policy{AllowUnencrypted: cfg.AllowUnencrypted || cfg.Mode == transport.ModeTLS},
+		sessions:    newSessionManager(cfg.SessionTTL, cfg.Metrics),
+		sweepCtx:    ctx,
+		sweepCancel: cancel,
+	}
+	s.handler = Chain(RequestHandler(handlerAdapter{server: s}), cfg.Middleware...)
+	go s.sessions.SweepLoop(ctx, 0)
+	return s
+}
+
+// Close stops the background session sweeper. It is the caller's
+// responsibility to ensure no further calls to ServeConn are made after Close
+// returns. In-flight ServeConn goroutines are not interrupted; they exit when
+// their connections close or their contexts cancel.
+func (s *Server) Close() error {
+	s.sweepCancel()
+	return nil
+}
+
+// secretProvider returns the configured SecretProvider, defaulting to a
+// StaticSecret built from Config.Secret and Config.Mode.
+func (s *Server) secretProvider() SecretProvider {
+	if s.cfg.SecretProvider != nil {
+		return s.cfg.SecretProvider
+	}
+	return StaticSecret{Secret: s.cfg.Secret, Mode: s.cfg.Mode}
+}
+
+// AcceptConn wraps a raw server-side net.Conn using the SecretProvider and
+// serves it to completion. It is the recommended entry point when
+// Config.SecretProvider is set; for single-secret deployments, callers may
+// still use transport.Accept + ServeConn directly.
+//
+// On a SecretProvider error the connection is closed without sending any
+// TACACS+ reply.
+func (s *Server) AcceptConn(ctx context.Context, nc net.Conn) error {
+	sp := s.secretProvider()
+	sc, err := sp.Get(ctx, nc.RemoteAddr())
+	if err != nil {
+		s.cfg.Metrics.IncSecretLookup(false)
+		_ = nc.Close()
+		return err
+	}
+	s.cfg.Metrics.IncSecretLookup(true)
+	conn := transport.NewConn(nc, sc.Mode, sc.Secret)
+	return s.ServeConn(ctx, conn)
 }
 
 // ServeConn drives a single connection to completion, reading packets and
 // writing responses until the connection closes or an error occurs.
 func (s *Server) ServeConn(ctx context.Context, c *transport.Conn) error {
+	var connFlags types.HeaderFlags
+	first := true
 	for {
 		select {
 		case <-ctx.Done():
@@ -57,42 +133,48 @@ func (s *Server) ServeConn(ctx context.Context, c *transport.Conn) error {
 		if err != nil {
 			return err
 		}
-		if err := s.checkFlags(hdr); err != nil {
+		if err := s.checkFlags(c, hdr); err != nil {
 			// Flag policy violation: send a typed error and terminate.
 			if perr := s.sendError(c, hdr); perr != nil {
 				return perr
 			}
 			return err
 		}
+		if first {
+			// Record the flags observed on the first packet. All subsequent
+			// packets on this connection MUST carry the same flags (RFC 8907
+			// §4.3): mixing encrypted and unencrypted bodies on the same
+			// connection is a protocol violation.
+			connFlags = hdr.Flags
+			first = false
+		} else if hdr.Flags != connFlags {
+			s.cfg.Metrics.IncPacketInvalid("flag_mismatch")
+			return s.sendGenericError(c, hdr)
+		}
 		// TLS forces the unencrypted flag; legacy bodies are already de-obfuscated
 		// by Conn.ReadPacket.
-		if err := s.dispatch(ctx, c, hdr, body); err != nil {
-			return err
+		resp := &connResponse{conn: c, header: hdr}
+		req := Request{
+			Header: hdr, Body: body, Conn: c,
+			Remote: remoteAddr(c), Ctx: ctx,
+		}
+		s.handler.Handle(resp, req)
+		if resp.Terminated() {
+			return resp.Err()
 		}
 	}
 }
 
-// checkFlags enforces the flag policy. Under TLS the unencrypted flag MUST be
-// set; under legacy, the flag must not be set unless explicitly allowed.
-func (s *Server) checkFlags(hdr packet.Header) error {
+// checkFlags enforces the per-packet flag policy. Under TLS the unencrypted
+// flag MUST be set; under legacy, the flag must not be set unless explicitly
+// allowed. The mode is read from the Conn (not Config.Mode) so that a
+// SecretProvider returning a per-connection mode is honored.
+func (s *Server) checkFlags(c *transport.Conn, hdr packet.Header) error {
 	flagSet := hdr.Flags.Has(types.FlagUnencrypted)
-	if s.cfg.Mode == transport.ModeTLS {
+	if c.Mode() == transport.ModeTLS {
 		return transport.EnforceTLSFlagPolicy(flagSet)
 	}
 	return s.policy.CheckUnencryptedFlag(flagSet)
-}
-
-func (s *Server) dispatch(ctx context.Context, c *transport.Conn, hdr packet.Header, body []byte) error {
-	switch hdr.Type {
-	case types.PacketAuthentication:
-		return s.handleAuthen(ctx, c, hdr, body)
-	case types.PacketAuthorization:
-		return s.handleAuthor(ctx, c, hdr, body)
-	case types.PacketAccounting:
-		return s.handleAcct(ctx, c, hdr, body)
-	default:
-		return s.sendGenericError(c, hdr)
-	}
 }
 
 func (s *Server) handleAuthen(ctx context.Context, c *transport.Conn, hdr packet.Header, body []byte) error {
@@ -112,11 +194,29 @@ func (s *Server) handleAuthen(ctx context.Context, c *transport.Conn, hdr packet
 			Action: st.Action, PrivLvl: st.PrivLvl, Type: st.Type, Service: st.Service,
 			User: st.User, Port: st.Port, RemAddr: st.RemAddr, Data: []byte(st.Data),
 		}
-		s.sessions[hdr.SessionID] = start
+		// Register a new session. If a session with this id already exists
+		// (e.g. client reused a SessionID), it is replaced.
+		s.sessions.Set(hdr.SessionID, &sessionContext{
+			start:      start,
+			flags:      hdr.Flags,
+			remoteAddr: remoteAddr(c),
+		})
 	} else {
 		// Restore the START context so the handler has the user and service for
-		// an interactive CONTINUE.
-		start = s.sessions[hdr.SessionID]
+		// an interactive CONTINUE. An unknown SessionID is a protocol
+		// violation (CONTINUE without a preceding START).
+		sctx, ok := s.sessions.Get(hdr.SessionID)
+		if !ok {
+			return s.sendGenericError(c, hdr)
+		}
+		// Validate the sequence number: the client must send lastOutboundSeq+1
+		// next (RFC 8907 §11). A violation terminates the session.
+		if err := ValidateNextSeqNo(hdr.SeqNo, sctx.lastOutboundSeq); err != nil {
+			s.sessions.Delete(hdr.SessionID)
+			s.cfg.Metrics.IncPacketInvalid("seq_no")
+			return s.sendGenericError(c, hdr)
+		}
+		start = sctx.start
 		var ct packet.AuthenContinue
 		if err := ct.UnmarshalBinary(body); err != nil {
 			return s.sendGenericError(c, hdr)
@@ -129,15 +229,22 @@ func (s *Server) handleAuthen(ctx context.Context, c *transport.Conn, hdr packet
 		RemoteAddr: remoteAddr(c),
 	}, cont)
 	if err != nil {
-		delete(s.sessions, hdr.SessionID)
+		s.sessions.Delete(hdr.SessionID)
 		return s.sendAuthenError(c, hdr, err)
 	}
 	if dec.Status == types.AuthenStatusPass || dec.Status == types.AuthenStatusFail || dec.Status == types.AuthenStatusError {
-		delete(s.sessions, hdr.SessionID)
+		s.sessions.Delete(hdr.SessionID)
+	} else {
+		// Non-terminal (GETUSER/GETPASS/GETDATA): advance the lastOutboundSeq
+		// so the next inbound CONTINUE can be validated.
+		s.sessions.Update(hdr.SessionID, func(sctx *sessionContext) {
+			sctx.lastOutboundSeq = hdr.SeqNo + 1
+		})
 	}
 	reply := packet.AuthenReply{
 		Status: dec.Status, Flags: dec.Flags, ServerMsg: dec.ServerMsg, Data: string(dec.Data),
 	}
+	s.cfg.Metrics.IncAuthenStatus(dec.Status)
 	rb, err := reply.MarshalBinary()
 	if err != nil {
 		return s.sendGenericError(c, hdr)
@@ -170,6 +277,7 @@ func (s *Server) handleAuthor(ctx context.Context, c *transport.Conn, hdr packet
 	for _, a := range dec.Args {
 		reply.Args = append(reply.Args, a.String())
 	}
+	s.cfg.Metrics.IncAuthorStatus(dec.Status)
 	rb, err := reply.MarshalBinary()
 	if err != nil {
 		return s.sendGenericError(c, hdr)
@@ -203,6 +311,7 @@ func (s *Server) handleAcct(ctx context.Context, c *transport.Conn, hdr packet.H
 		return s.sendAcctError(c, hdr, err)
 	}
 	reply := packet.AcctReply{Status: dec.Status, ServerMsg: dec.ServerMsg}
+	s.cfg.Metrics.IncAcctStatus(dec.Status)
 	rb, err := reply.MarshalBinary()
 	if err != nil {
 		return s.sendGenericError(c, hdr)

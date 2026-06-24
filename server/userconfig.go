@@ -17,10 +17,29 @@ import (
 
 // UserConfig is the server-side configuration of users and authorization
 // policy, loadable from YAML or JSON.
+//
+// The schema supports two authorization styles, which may coexist:
+//
+//  1. The legacy flat Policy (AllowCommands/DenyCommands), applied as a
+//     top-level fallback when a user has no resolved command rules.
+//  2. The structured Group/Service/Command model: groups bundle reusable
+//     command rules; services describe AVP-based authorization for non-command
+//     requests (e.g. PPP). Users reference groups and services by name;
+//     UserConfig.Resolve expands them into a per-user ResolvedUser.
+//
+// Mixed configs are fine: a user with neither groups nor commands falls
+// through to the top-level Policy.Allows check.
 type UserConfig struct {
 	// Users is the list of configured accounts.
 	Users []User `yaml:"users" json:"users"`
-	// Policy is the command authorization policy.
+	// Groups is the list of reusable group definitions. Users reference
+	// groups by name via User.Groups.
+	Groups []Group `yaml:"groups,omitempty" json:"groups,omitempty"`
+	// Services is the list of named service definitions. Users and groups
+	// reference services by name via User.Services / Group.Services.
+	Services []Service `yaml:"services,omitempty" json:"services,omitempty"`
+	// Policy is the command authorization policy applied when a user has no
+	// resolved command rules (the legacy fallback).
 	Policy Policy `yaml:"policy,omitempty" json:"policy,omitempty"`
 	// AllowPlaintext permits plaintext passwords in the config for development
 	// only. It defaults to false; bcrypt hashes are always allowed.
@@ -85,15 +104,34 @@ func (c *UserConfig) Validate() error {
 }
 
 // ConfigHandler is a Handler driven by a UserConfig: it authenticates users
-// against the configured password store and authorizes commands per the policy.
+// against the configured password store and authorizes commands per the
+// policy. Authorization prefers the structured Group/Service/Command model
+// when present, falling back to the flat Policy when a user has no resolved
+// rules.
 type ConfigHandler struct {
-	store UserStore
-	cfg   *UserConfig
+	store    UserStore
+	cfg      *UserConfig
+	resolved map[string]ResolvedUser
 }
 
-// NewConfigHandler builds a Handler from a loaded UserConfig.
-func NewConfigHandler(cfg *UserConfig) *ConfigHandler {
-	return &ConfigHandler{store: NewMemoryUserStore(cfg.Users), cfg: cfg}
+// NewConfigHandler builds a Handler from a loaded UserConfig. It expands
+// the structured Group/Service/Command model eagerly: a Resolve failure
+// (unknown group/service reference, bad regexp) is returned as an error
+// and the Handler is not built. Callers SHOULD surface the error to the
+// operator rather than proceeding with a partially-configured handler.
+func NewConfigHandler(cfg *UserConfig) (*ConfigHandler, error) {
+	if cfg == nil {
+		cfg = &UserConfig{}
+	}
+	resolved, err := cfg.Resolve()
+	if err != nil {
+		return nil, err
+	}
+	return &ConfigHandler{
+		store:    NewMemoryUserStore(cfg.Users),
+		cfg:      cfg,
+		resolved: resolved,
+	}, nil
 }
 
 // Authenticate verifies credentials. For PAP the password is in Start.Data; for
@@ -121,20 +159,37 @@ func (h *ConfigHandler) Authenticate(ctx context.Context, ac AuthenContext, cont
 	return AuthenDecision{Status: types.AuthenStatusFail, ServerMsg: "invalid credentials"}, nil
 }
 
-// Authorize applies the command policy to the request.
+// Authorize applies the command policy to the request. It first consults the
+// structured Group/Service/Command rules when present; when a user has no
+// resolved command rules it falls back to the flat Policy (Allow/Deny
+// command lists). Non-command requests (no "cmd" AVP) are matched against
+// the user's resolved Services; a service match returns PassRepl with the
+// service's SetValues.
 func (h *ConfigHandler) Authorize(ctx context.Context, ac AuthorContext) (AuthorDecision, error) {
-	if _, ok := h.store.Lookup(ac.User); !ok {
+	ru, ok := h.resolved[ac.User]
+	if !ok {
+		// Unknown user: deny. (Authentication would already have rejected
+		// this, but Authorize may be called without prior authentication on
+		// some deployments.)
 		return AuthorDecision{Status: types.AuthorStatusFail}, nil
 	}
-	cmd := ""
-	for _, a := range ac.Args {
-		if a.Name == "cmd" {
-			cmd = a.Value
-		}
-	}
+	cmd := extractCmd(ac.Args)
 	if cmd == "" {
-		// No command to authorize (e.g. a service login): permit.
+		// Non-command request: try service match.
+		if dec, matched := matchService(ru.Services, ac.Args); matched {
+			return dec, nil
+		}
+		// No service matched: permit by default to preserve back-compat
+		// with prior versions that permitted service-login requests.
 		return AuthorDecision{Status: types.AuthorStatusPassAdd}, nil
+	}
+	// Structured rules take precedence.
+	if len(ru.Commands) > 0 {
+		if dec, matched := matchCommand(ru.Commands, cmd, ac.Args); matched {
+			return dec, nil
+		}
+		// No structured rule matched: fall through to Policy so an admin
+		// can layer structured rules on top of a flat allow-list.
 	}
 	if h.cfg.Policy.Allows(cmd) {
 		return AuthorDecision{Status: types.AuthorStatusPassAdd}, nil

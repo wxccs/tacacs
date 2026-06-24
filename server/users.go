@@ -11,6 +11,11 @@ import (
 // User is a single configured user account. PasswordHash is a bcrypt hash by
 // convention; the leading scheme marker selects the verifier (see
 // VerifyPassword). An empty hash denotes a disabled account.
+//
+// In addition to credentials, a User may reference named Groups and Services
+// declared at the UserConfig level; those are expanded into the user's
+// resolved rule set by UserConfig.Resolve. User-level Commands are evaluated
+// BEFORE group-contributed rules, so a user can override group policy.
 type User struct {
 	// Username is the account name (case-sensitive).
 	Username string `yaml:"username" json:"username"`
@@ -19,8 +24,21 @@ type User struct {
 	// accepted only when explicitly allowed (AllowPlaintext) for development.
 	PasswordHash string `yaml:"password" json:"password"`
 	// AuthType restricts the authentication type this user may use ("ascii",
-	// "pap", "chap", "mschap", "mschapv2", or empty for any).
+	// "pap", "chap", "mschap", "mschapv2", or empty for any). When set on a
+	// referenced Group, the user inherits it unless overridden here.
 	AuthType string `yaml:"auth-type,omitempty" json:"auth-type,omitempty"`
+	// Groups is the list of Group.Name entries this user belongs to. The
+	// groups' Commands and Services are merged into this user's resolved
+	// rule set at Resolve time. Unknown references cause Resolve to fail.
+	Groups []string `yaml:"groups,omitempty" json:"groups,omitempty"`
+	// Services is the list of Service.Name entries this user directly
+	// references (in addition to any contributed via Groups). Unknown
+	// references cause Resolve to fail.
+	Services []string `yaml:"services,omitempty" json:"services,omitempty"`
+	// Commands is the user-level command authorization rules. They are
+	// evaluated before any group-contributed rules, so a user can override
+	// group policy. Patterns are Go regexps compiled at Resolve time.
+	Commands []CommandRule `yaml:"commands,omitempty" json:"commands,omitempty"`
 }
 
 // VerifyPassword reports whether the supplied password matches the stored hash.

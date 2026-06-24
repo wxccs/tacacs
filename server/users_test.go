@@ -118,7 +118,8 @@ func TestLoadUserConfig(t *testing.T) {
 
 func TestConfigHandlerAuthPAP(t *testing.T) {
 	cfg := &UserConfig{Users: []User{{Username: "admin", PasswordHash: mustBcrypt(t, "pw123"), AuthType: "pap"}}}
-	h := NewConfigHandler(cfg)
+	h, err := NewConfigHandler(cfg)
+	require.NoError(t, err)
 
 	// Correct password (PAP carries the password in Start.Data).
 	dec, err := h.Authenticate(context.Background(), AuthenContext{
@@ -144,7 +145,8 @@ func TestConfigHandlerAuthPAP(t *testing.T) {
 
 func TestConfigHandlerAuthASCII(t *testing.T) {
 	cfg := &UserConfig{Users: []User{{Username: "bob", PasswordHash: mustBcrypt(t, "hunter2")}}}
-	h := NewConfigHandler(cfg)
+	h, err := NewConfigHandler(cfg)
+	require.NoError(t, err)
 
 	// START -> GETPASS.
 	dec, err := h.Authenticate(context.Background(), AuthenContext{
@@ -170,7 +172,8 @@ func TestConfigHandlerAuthASCII(t *testing.T) {
 
 func TestConfigHandlerAuthTypeRestriction(t *testing.T) {
 	cfg := &UserConfig{Users: []User{{Username: "u", PasswordHash: mustBcrypt(t, "p"), AuthType: "pap"}}}
-	h := NewConfigHandler(cfg)
+	h, err := NewConfigHandler(cfg)
+	require.NoError(t, err)
 	// ASCII not allowed for a pap-only user.
 	dec, _ := h.Authenticate(context.Background(), AuthenContext{
 		Start: AuthenStart{User: "u", Type: types.AuthenTypeASCII},
@@ -186,7 +189,8 @@ func TestConfigHandlerAuthorize(t *testing.T) {
 			DenyCommands:  []string{"show secret"},
 		},
 	}
-	h := NewConfigHandler(cfg)
+	h, err := NewConfigHandler(cfg)
+	require.NoError(t, err)
 
 	// Allowed.
 	dec, err := h.Authorize(context.Background(), AuthorContext{
@@ -222,7 +226,8 @@ func TestConfigHandlerAuthorize(t *testing.T) {
 }
 
 func TestConfigHandlerAccount(t *testing.T) {
-	h := NewConfigHandler(&UserConfig{Users: []User{{Username: "a", PasswordHash: "$2a$x"}}})
+	h, err := NewConfigHandler(&UserConfig{Users: []User{{Username: "a", PasswordHash: "$2a$x"}}})
+	require.NoError(t, err)
 	dec, err := h.Account(context.Background(), AcctContext{User: "a"})
 	require.NoError(t, err)
 	assert.Equal(t, types.AcctStatusSuccess, dec.Status)

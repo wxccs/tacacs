@@ -1,5 +1,20 @@
 # SPDX-License-Identifier: MIT
-# Example: TACACS+ test server user database and command policy.
+# Example: TACACS+ server user database with groups, services and policy.
+#
+# This schema supports two authorization styles, which may coexist:
+#
+#  1. Structured rules (preferred for new configs):
+#     - groups: reusable bundles of command rules, referenced by users
+#     - services: AVP-based authorization for non-command requests (PPP, etc.)
+#     - users[i].commands: user-level rules (override group rules)
+#     - users[i].groups / users[i].services: name references
+#
+#  2. Legacy flat policy (back-compat):
+#     - policy.allow-commands / policy.deny-commands: glob-style patterns
+#       ("show *" matches any "show ..." command)
+#
+# Structured rules take precedence over the flat policy when both are present.
+# A user with neither groups nor commands falls through to the flat policy.
 #
 # Passwords are bcrypt hashes. Generate one with, for example:
 #   htpasswd -nbB admin 'password'
@@ -9,19 +24,52 @@
 # Set allow-plaintext: true ONLY for local development to use cleartext
 # passwords; never do this in production.
 
+allow-plaintext: true
+
 users:
   - username: admin
     password: "$2a$10$REPLACE_WITH_BCRYPT_HASH_OF_ADMIN_PASSWORD"
     auth-type: pap
+    groups: [admins]
   - username: operator
     password: "$2a$10$REPLACE_WITH_BCRYPT_HASH_OF_OPERATOR_PASSWORD"
     auth-type: ascii
+    groups: [operators]
+  - username: ppp-user
+    password: "$2a$10$REPLACE_WITH_BCRYPT_HASH_OF_PPP_USER_PASSWORD"
+    auth-type: pap
+    services: [ppp-default]
 
+groups:
+  - name: admins
+    commands:
+      - action: permit
+        pattern: "^.*$"   # admins may run anything
+  - name: operators
+    commands:
+      - action: permit
+        pattern: "^show "
+      - action: permit
+        pattern: "^exit$"
+      - action: deny
+        pattern: "^configure "
+
+services:
+  - name: ppp-default
+    match:
+      - name: service
+        value: ppp
+    set-values:
+      - name: addr
+        value: 10.0.0.1
+      - name: route
+        value: "10.0.0.0/24"
+
+# Legacy fallback policy: applied when a user has no structured rules.
 policy:
   allow-commands:
     - "show *"
     - "exit"
-    - "enable"
   deny-commands:
     - "show secret"
     - "configure *"
