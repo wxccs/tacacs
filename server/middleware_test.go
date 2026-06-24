@@ -112,13 +112,20 @@ func newCountingMetrics() *countingMetrics {
 
 func (c *countingMetrics) IncPacketReceived(pt types.PacketType) { c.counts[pt]++ }
 func (c *countingMetrics) IncPacketInvalid(string)               {}
-func (c *countingMetrics) IncAuthenStatus(types.AuthenStatus)    {}
-func (c *countingMetrics) IncAuthorStatus(types.AuthorStatus)    {}
-func (c *countingMetrics) IncAcctStatus(types.AcctStatus)        {}
-func (c *countingMetrics) IncSecretLookup(bool)                  {}
-func (c *countingMetrics) ObserveSessionDuration(time.Duration)  {}
-func (c *countingMetrics) IncSessionActive()                     {}
-func (c *countingMetrics) DecSessionActive()                     {}
+func (c *countingMetrics) IncAuthenStatus(types.AuthenType, types.AuthenStatus) {
+}
+func (c *countingMetrics) IncAuthorStatus(types.AuthorStatus)   {}
+func (c *countingMetrics) IncAcctStatus(types.AcctStatus)       {}
+func (c *countingMetrics) ObserveAuthenLatency(time.Duration)   {}
+func (c *countingMetrics) ObserveAuthorLatency(time.Duration)   {}
+func (c *countingMetrics) ObserveAcctLatency(time.Duration)     {}
+func (c *countingMetrics) IncSecretLookup(bool)                 {}
+func (c *countingMetrics) IncConnAccepted()                     {}
+func (c *countingMetrics) IncConnRejected(string)               {}
+func (c *countingMetrics) IncAcceptError()                      {}
+func (c *countingMetrics) ObserveSessionDuration(time.Duration) {}
+func (c *countingMetrics) IncSessionActive()                    {}
+func (c *countingMetrics) DecSessionActive()                    {}
 
 func TestMetricsMiddlewareCountsReceived(t *testing.T) {
 	m := newCountingMetrics()

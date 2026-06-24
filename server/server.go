@@ -237,10 +237,12 @@ func (s *Server) handleAuthen(ctx context.Context, c *transport.Conn, hdr packet
 		cont = &AuthenContinue{UserMsg: ct.UserMsg, Data: []byte(ct.Data), Flags: ct.Flags}
 	}
 
+	authenStart := time.Now()
 	dec, err := s.cfg.Handler.Authenticate(ctx, AuthenContext{
 		SessionID: hdr.SessionID, SeqNo: hdr.SeqNo, Start: start,
 		RemoteAddr: remoteAddr(c),
 	}, cont)
+	s.cfg.Metrics.ObserveAuthenLatency(time.Since(authenStart))
 	if err != nil {
 		s.sessions.Delete(hdr.SessionID)
 		return s.sendAuthenError(c, hdr, err)
@@ -257,7 +259,7 @@ func (s *Server) handleAuthen(ctx context.Context, c *transport.Conn, hdr packet
 	reply := packet.AuthenReply{
 		Status: dec.Status, Flags: dec.Flags, ServerMsg: dec.ServerMsg, Data: string(dec.Data),
 	}
-	s.cfg.Metrics.IncAuthenStatus(dec.Status)
+	s.cfg.Metrics.IncAuthenStatus(start.Type, dec.Status)
 	rb, err := reply.MarshalBinary()
 	if err != nil {
 		return s.sendGenericError(c, hdr)
@@ -278,11 +280,13 @@ func (s *Server) handleAuthor(ctx context.Context, c *transport.Conn, hdr packet
 		}
 		args = append(args, parsed)
 	}
+	authorStart := time.Now()
 	dec, err := s.cfg.Handler.Authorize(ctx, AuthorContext{
 		SessionID: hdr.SessionID, SeqNo: hdr.SeqNo, Method: req.Method, PrivLvl: req.PrivLvl,
 		Type: req.Type, Service: req.Service, User: req.User, Port: req.Port, RemAddr: req.RemAddr,
 		Args: args, RemoteAddr: remoteAddr(c),
 	})
+	s.cfg.Metrics.ObserveAuthorLatency(time.Since(authorStart))
 	if err != nil {
 		return s.sendAuthorError(c, hdr)
 	}
@@ -315,11 +319,13 @@ func (s *Server) handleAcct(ctx context.Context, c *transport.Conn, hdr packet.H
 		}
 		args = append(args, parsed)
 	}
+	acctStart := time.Now()
 	dec, err := s.cfg.Handler.Account(ctx, AcctContext{
 		SessionID: hdr.SessionID, SeqNo: hdr.SeqNo, Flags: req.Flags, Method: req.Method,
 		PrivLvl: req.PrivLvl, Type: req.Type, Service: req.Service, User: req.User, Port: req.Port,
 		RemAddr: req.RemAddr, Args: args, RemoteAddr: remoteAddr(c),
 	})
+	s.cfg.Metrics.ObserveAcctLatency(time.Since(acctStart))
 	if err != nil {
 		return s.sendAcctError(c, hdr, err)
 	}

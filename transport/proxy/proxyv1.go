@@ -29,23 +29,32 @@ var (
 	ErrMalformedProxy = errors.New("proxy: malformed PROXY v1 header")
 )
 
-// ReadHeader reads a PROXY v1 header from r and returns the real client
-// address. If the connection does not begin with the PROXY signature,
-// ErrNoProxyHeader is returned without consuming any bytes (the reader's
-// position is left at the start so the caller can fall back to normal
-// TACACS+ framing).
+// ReadHeader reads a PROXY protocol header (v1 text or v2 binary) from r and
+// returns the real client address. It dispatches on the first byte: 'P' begins
+// the v1 signature, 0x0D begins the v2 signature. Any other first byte means
+// no PROXY header is present and ErrNoProxyHeader is returned without consuming
+// any bytes, so the caller can fall back to normal TACACS+ framing.
 //
-// On success the entire header line including the trailing CRLF has been
-// consumed.
+// On success the entire header (line+CRLF for v1, fixed block+address+TLVs for
+// v2) has been consumed and r is positioned at the first payload byte.
 func ReadHeader(r *bufio.Reader) (net.Addr, error) {
-	// Peek the first byte; if it's not 'P', there's no PROXY header.
 	peek, err := r.Peek(1)
 	if err != nil {
 		return nil, err
 	}
-	if peek[0] != 'P' {
+	switch peek[0] {
+	case 'P':
+		return readHeaderV1(r)
+	case v2Sig[0]:
+		return readHeaderV2(r)
+	default:
 		return nil, ErrNoProxyHeader
 	}
+}
+
+// readHeaderV1 parses a PROXY v1 text header. The first byte ('P') has already
+// been confirmed by ReadHeader but not consumed.
+func readHeaderV1(r *bufio.Reader) (net.Addr, error) {
 	// Read the full line (up to MaxHeaderLen).
 	line, err := r.ReadString('\n')
 	if err != nil {

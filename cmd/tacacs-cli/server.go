@@ -244,6 +244,7 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 			// (listener closed on shutdown) ends the loop.
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() {
+				metrics.IncAcceptError()
 				time.Sleep(50 * time.Millisecond)
 				continue
 			}
@@ -258,12 +259,14 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 			default:
 				types.WithFunc(log, "server.ServeConn").With("peer", c.RemoteAddr().String()).
 					Warn("connection rejected: max-conns reached", "max_conns", maxConns)
+				metrics.IncConnRejected("max_conns")
 				_ = c.Close()
 				continue
 			}
 		}
 		conn := transport.Accept(c, mode(), []byte(secret))
 		tracker.add(conn)
+		metrics.IncConnAccepted()
 		wg.Go(func() {
 			defer tracker.remove(conn)
 			if sem != nil {

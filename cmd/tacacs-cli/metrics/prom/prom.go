@@ -25,6 +25,10 @@ type Metrics struct {
 	authorStatus    *prometheus.CounterVec
 	acctStatus      *prometheus.CounterVec
 	secretLookup    *prometheus.CounterVec
+	connAccepted    prometheus.Counter
+	connRejected    *prometheus.CounterVec
+	acceptError     prometheus.Counter
+	aaaLatency      *prometheus.HistogramVec
 	sessionDuration prometheus.Histogram
 	sessionActive   prometheus.Gauge
 }
@@ -47,8 +51,8 @@ func New() *Metrics {
 		authenStatus: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "authen_status_total",
-			Help:      "Total authentication replies by status.",
-		}, []string{"status"}),
+			Help:      "Total authentication replies by authentication type and status.",
+		}, []string{"authen_type", "status"}),
 		authorStatus: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "author_status_total",
@@ -64,6 +68,27 @@ func New() *Metrics {
 			Name:      "secret_lookup_total",
 			Help:      "Total SecretProvider lookups by hit (true/false).",
 		}, []string{"hit"}),
+		connAccepted: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "connections_accepted_total",
+			Help:      "Total connections accepted and dispatched for service.",
+		}),
+		connRejected: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "connections_rejected_total",
+			Help:      "Total connections rejected before service, by reason.",
+		}, []string{"reason"}),
+		acceptError: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: namespace,
+			Name:      "accept_errors_total",
+			Help:      "Total transient listener Accept errors that triggered backoff.",
+		}),
+		aaaLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: namespace,
+			Name:      "aaa_handler_latency_seconds",
+			Help:      "Wall-clock latency of AAA handler invocations by phase (authen/author/acct).",
+			Buckets:   prometheus.DefBuckets,
+		}, []string{"phase"}),
 		sessionDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Name:      "session_duration_seconds",
@@ -78,7 +103,8 @@ func New() *Metrics {
 	}
 	prometheus.MustRegister(
 		m.packetReceived, m.packetInvalid, m.authenStatus, m.authorStatus,
-		m.acctStatus, m.secretLookup, m.sessionDuration, m.sessionActive,
+		m.acctStatus, m.secretLookup, m.connAccepted, m.connRejected,
+		m.acceptError, m.aaaLatency, m.sessionDuration, m.sessionActive,
 	)
 	return m
 }
@@ -94,8 +120,8 @@ func (m *Metrics) IncPacketInvalid(reason string) {
 }
 
 // IncAuthenStatus implements server.Metrics.
-func (m *Metrics) IncAuthenStatus(s types.AuthenStatus) {
-	m.authenStatus.WithLabelValues(s.String()).Inc()
+func (m *Metrics) IncAuthenStatus(at types.AuthenType, s types.AuthenStatus) {
+	m.authenStatus.WithLabelValues(at.String(), s.String()).Inc()
 }
 
 // IncAuthorStatus implements server.Metrics.
@@ -111,6 +137,32 @@ func (m *Metrics) IncAcctStatus(s types.AcctStatus) {
 // IncSecretLookup implements server.Metrics.
 func (m *Metrics) IncSecretLookup(hit bool) {
 	m.secretLookup.WithLabelValues(boolStr(hit)).Inc()
+}
+
+// IncConnAccepted implements server.Metrics.
+func (m *Metrics) IncConnAccepted() { m.connAccepted.Inc() }
+
+// IncConnRejected implements server.Metrics.
+func (m *Metrics) IncConnRejected(reason string) {
+	m.connRejected.WithLabelValues(reason).Inc()
+}
+
+// IncAcceptError implements server.Metrics.
+func (m *Metrics) IncAcceptError() { m.acceptError.Inc() }
+
+// ObserveAuthenLatency implements server.Metrics.
+func (m *Metrics) ObserveAuthenLatency(d time.Duration) {
+	m.aaaLatency.WithLabelValues("authen").Observe(d.Seconds())
+}
+
+// ObserveAuthorLatency implements server.Metrics.
+func (m *Metrics) ObserveAuthorLatency(d time.Duration) {
+	m.aaaLatency.WithLabelValues("author").Observe(d.Seconds())
+}
+
+// ObserveAcctLatency implements server.Metrics.
+func (m *Metrics) ObserveAcctLatency(d time.Duration) {
+	m.aaaLatency.WithLabelValues("acct").Observe(d.Seconds())
 }
 
 // ObserveSessionDuration implements server.Metrics.

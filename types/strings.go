@@ -60,3 +60,24 @@ func (s AcctStatus) String() string {
 		return fmt.Sprintf("unknown(%d)", int(s))
 	}
 }
+
+// String returns a human-readable name for the authentication type, suitable
+// as a metric label.
+func (t AuthenType) String() string {
+	switch t {
+	case AuthenTypeNotSet:
+		return "notset"
+	case AuthenTypeASCII:
+		return "ascii"
+	case AuthenTypePAP:
+		return "pap"
+	case AuthenTypeCHAP:
+		return "chap"
+	case AuthenTypeMSCHAP:
+		return "mschap"
+	case AuthenTypeMSCHAPv2:
+		return "mschapv2"
+	default:
+		return fmt.Sprintf("unknown(%d)", int(t))
+	}
+}

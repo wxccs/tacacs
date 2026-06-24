@@ -6,7 +6,7 @@ PACKAGES := ./...
 # FUZZTIME bounds each fuzz target in `make fuzz`; override for longer local runs.
 FUZZTIME ?= 20s
 # FUZZPKGS lists packages whose decoders parse untrusted input.
-FUZZPKGS := ./crypto ./legacy ./packet ./transport ./types
+FUZZPKGS := ./crypto ./legacy ./packet ./transport ./transport/proxy ./types
 
 .PHONY: all fmt vet build test cover lint tidy clean fuzz
 
