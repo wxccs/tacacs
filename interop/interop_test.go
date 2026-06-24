@@ -4,7 +4,14 @@ package interop_test
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"testing"
@@ -522,4 +529,199 @@ func TestTacquitoClientToLocalServer_Accounting(t *testing.T) {
 	var reply tq.AcctReply
 	require.NoError(t, tq.Unmarshal(resp.Body, &reply))
 	assert.Equal(t, tq.AcctReplyStatusSuccess, reply.Status, "tacquito client accounting should succeed against local server")
+}
+
+// ---------------------------------------------------------------------------
+// TLS interop (RFC 9887)
+// ---------------------------------------------------------------------------
+
+// interopTestCA generates a self-signed ECDSA P-256 CA and signs leaf certs.
+// Mirrors the pattern in client/certest_test.go but lives in the interop
+// package so we can share it across both TLS directions.
+type interopTestCA struct {
+	cert    *x509.Certificate
+	key     *ecdsa.PrivateKey
+	certDER []byte
+}
+
+func newInteropTestCA(t *testing.T, name string) *interopTestCA {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: name},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	ca, _ := x509.ParseCertificate(der)
+	return &interopTestCA{cert: ca, key: key, certDER: der}
+}
+
+func (c *interopTestCA) pool() *x509.CertPool {
+	p := x509.NewCertPool()
+	p.AddCert(c.cert)
+	return p
+}
+
+func (c *interopTestCA) leaf(t *testing.T, san string) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: san},
+		DNSNames:     []string{san},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, &key.PublicKey, c.key)
+	require.NoError(t, err)
+	return tls.Certificate{Certificate: [][]byte{der, c.certDER}, PrivateKey: key}
+}
+
+// startTacquitoServerTLS brings up a tacquito server with TLS 1.3 enabled.
+// The server does NOT require client certificates; the local client can
+// authenticate with just a CA pool.
+func startTacquitoServerTLS(t *testing.T) (string, context.CancelFunc) {
+	t.Helper()
+	ca := newInteropTestCA(t, "tacquito-ca")
+	serverCert := ca.leaf(t, "localhost")
+	serverTLS := &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		MaxVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{serverCert},
+		ClientAuth:   tls.NoClientCert,
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	tcpLn := ln.(*net.TCPListener)
+	tlsLn, err := tq.NewTLSListener(tcpLn, serverTLS)
+	require.NoError(t, err)
+	logger := stubLogger{t: t}
+	handler := &tacquitoStubHandler{logger: logger}
+	sp := &tacquitoStubSecret{handler: handler}
+	srv := tq.NewServer(logger, sp, tq.SetUseTLS(true))
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = srv.Serve(ctx, tlsLn) }()
+	return ln.Addr().String(), cancel
+}
+
+// startLocalServerTLS brings up a local server with TLS 1.3 enabled. Uses
+// transport.ServerTLSConfig which requires mutual TLS authentication, so the
+// tacquito client must present a cert signed by the same CA.
+func startLocalServerTLS(t *testing.T) (string, *interopTestCA, context.CancelFunc) {
+	t.Helper()
+	ca := newInteropTestCA(t, "local-ca")
+	serverCert := ca.leaf(t, "localhost")
+	srvCfg := transport.ServerTLSConfig(serverCert, ca.pool())
+	ln, err := transport.ListenTLS("tcp", "127.0.0.1:0", srvCfg)
+	require.NoError(t, err)
+	srv := server.New(server.Config{
+		Handler: &interopHandler{},
+		Secret:  nil,
+		Mode:    transport.ModeTLS,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-ctx.Done()
+		_ = ln.Close()
+	}()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn := transport.Accept(c, transport.ModeTLS, nil)
+			go func() { _ = srv.ServeConn(context.Background(), conn) }()
+		}
+	}()
+	return ln.Addr().String(), ca, cancel
+}
+
+func TestLocalClientToTacquitoServer_TLS_PAP(t *testing.T) {
+	addr, cancel := startTacquitoServerTLS(t)
+	defer cancel()
+
+	// Build a client TLS config that trusts the in-memory CA pool. We don't
+	// have direct access to the tacquito server's CA, so we use InsecureSkipVerify
+	// for the test fixture (acceptable: this is a localhost interop test).
+	clientTLS := &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		MaxVersion:         tls.VersionTLS13,
+		InsecureSkipVerify: true,
+	}
+	conn, err := transport.DialTLS(context.Background(), "tcp", addr, clientTLS)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	c, err := client.New(conn)
+	require.NoError(t, err)
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+
+	reply, err := c.Authenticate(ctx, client.AuthenRequest{
+		Action:  types.AuthenLogin,
+		PrivLvl: 0,
+		Type:    types.AuthenTypePAP,
+		Service: types.AuthenServiceLogin,
+		User:    testUser,
+		Port:    "tty0",
+		RemAddr: "127.0.0.1",
+		Data:    []byte(testPassword),
+	}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, types.AuthenStatusPass, reply.Status, "TLS PAP should pass against tacquito server")
+}
+
+func TestTacquitoClientToLocalServer_TLS_PAP(t *testing.T) {
+	addr, ca, cancel := startLocalServerTLS(t)
+	defer cancel()
+
+	// The local server requires mutual TLS; build a client cert signed by
+	// the same CA so tacquito's client can present it.
+	clientCert := ca.leaf(t, "client")
+	clientTLS := &tls.Config{
+		MinVersion:         tls.VersionTLS13,
+		MaxVersion:         tls.VersionTLS13,
+		Certificates:       []tls.Certificate{clientCert},
+		RootCAs:            ca.pool(),
+		InsecureSkipVerify: true, // skip hostname verification for localhost test
+	}
+	c, err := tq.NewClient(tq.SetClientTLSDialer("tcp", addr, clientTLS))
+	require.NoError(t, err)
+	defer c.Close()
+
+	start := tq.NewAuthenStart(
+		tq.SetAuthenStartAction(tq.AuthenActionLogin),
+		tq.SetAuthenStartPrivLvl(tq.PrivLvl(0)),
+		tq.SetAuthenStartType(tq.AuthenTypePAP),
+		tq.SetAuthenStartService(tq.AuthenServiceLogin),
+		tq.SetAuthenStartPort("tty0"),
+		tq.SetAuthenStartRemAddr("127.0.0.1"),
+		tq.SetAuthenStartUser(tq.AuthenUser(testUser)),
+		tq.SetAuthenStartData(tq.AuthenData(testPassword)),
+	)
+	pkt := tq.NewPacket(
+		tq.SetPacketHeader(tq.NewHeader(
+			tq.SetHeaderVersion(tq.Version{MajorVersion: tq.MajorVersion, MinorVersion: tq.MinorVersionOne}),
+			tq.SetHeaderType(tq.Authenticate),
+			tq.SetHeaderRandomSessionID(),
+		)),
+		tq.SetPacketBodyUnsafe(start),
+	)
+	resp, err := c.Send(pkt)
+	require.NoError(t, err)
+	var reply tq.AuthenReply
+	require.NoError(t, tq.Unmarshal(resp.Body, &reply))
+	assert.Equal(t, tq.AuthenStatusPass, reply.Status, "tacquito client TLS PAP should pass against local server")
 }
