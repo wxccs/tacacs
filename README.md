@@ -30,8 +30,13 @@ tool for interoperability testing:
   [viper](https://github.com/spf13/viper) and
   [logrus](https://github.com/sirupsen/logrus).
 
-> **Status:** work in progress. The library is built in phases; see the project
-> plan. This README is expanded as the higher-level APIs land.
+> **Status:** the protocol core, transport, AAA backends and CLI are complete
+> and covered by fuzz targets, race-tested unit/integration tests and a
+> cross-implementation interop suite against
+> [tacquito](https://github.com/facebookincubator/tacquito). See
+> [`docs/operations.md`](./docs/operations.md) for production deployment
+> guidance and [`docs/load-test.md`](./docs/load-test.md) for measured
+> throughput.
 
 ## Installation
 
@@ -165,7 +170,7 @@ For low-level packet construction and inspection, the `packet`, `crypto`,
 ├── server/          server-side handlers
 ├── legacy/          RFC 1492 original TACACS
 ├── cmd/tacacs-cli/  command-line tool
-└── docs/rfc/        source RFC texts
+└── docs/            examples, RFC texts, operations & load-test guides
 ```
 
 ## Development
@@ -178,7 +183,11 @@ make test        # unit + integration tests
 make cover       # coverage report (target >= 90%)
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the code and logging conventions.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the code and logging conventions,
+[`docs/operations.md`](./docs/operations.md) for production deployment
+(auth backends, metrics, capacity, shutdown, multi-NAS), and
+[`docs/load-test.md`](./docs/load-test.md) for measured throughput and
+sizing guidance.
 
 ## License
 
