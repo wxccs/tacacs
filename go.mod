@@ -3,6 +3,7 @@ module github.com/wxccs/tacacs
 go 1.26.4
 
 require (
+	github.com/facebookincubator/tacquito v0.0.0-20260609204622-9288b059bee3
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/prometheus/client_golang v1.23.2
