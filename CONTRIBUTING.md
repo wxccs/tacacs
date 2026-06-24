@@ -29,11 +29,21 @@ Requires Go 1.26 or later.
 ## Logging convention
 
 The library core logs through the `types.Logger` interface (the default is
-`types.NopLogger()`). Every log call is annotated with a `func` field naming the
-caller using the dotted path from the module root, for example
-`packet.Header.Marshal`. The `tacacs-cli` tool injects a logrus adapter.
+`types.NopLogger()`). The interface is signature-compatible with a subset of
+`*slog.Logger`: callers pass `msg string, args ...any` where `args` are
+alternating key/value pairs, and levels use `slog.Level`
+(`slog.LevelDebug`, `slog.LevelInfo`, `slog.LevelWarn`, `slog.LevelError`).
 
-When the log level is Trace, log the full upstream request and response,
+Every log call is annotated with a `func` field naming the caller using the
+dotted path from the module root (e.g. `packet.Header.Marshal`). Use
+`types.WithFunc(logger, name)` as a convenience wrapper — equivalent to
+`logger.With("func", name)`.
+
+The `tacacs-cli` tool injects a logrus adapter that satisfies the interface;
+library packages (`errors`, `types`, `packet`, `crypto`, `protocol`,
+`transport`, `legacy`) stay free of any logging dependency.
+
+When the log level is Debug, log the full upstream request and response,
 including headers and bodies (hex-dumped for binary protocols).
 
 ## Testing

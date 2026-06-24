@@ -67,7 +67,7 @@ func runAuth(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	log.WithFunc("cmd.tacacs-cli.runAuth").Infof("authenticating user %q via %s", authUser, authType)
+	types.WithFunc(log, "cmd.tacacs-cli.runAuth").Info("authenticating user", "user", authUser, "type", authType)
 	reply, err := cl.Authenticate(context.Background(), req, contFn)
 	if err != nil {
 		return fmt.Errorf("authentication failed: %w", err)

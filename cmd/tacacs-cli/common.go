@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -40,18 +41,18 @@ func addClientFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&clientCert, "client-cert", "", "client certificate PEM file (TLS)")
 	cmd.Flags().StringVar(&clientKey, "client-key", "", "client private key PEM file (TLS)")
 	cmd.Flags().StringVar(&sni, "sni", "", "TLS server name (SNI)")
-	cmd.Flags().BoolVar(&debug, "debug", false, "enable debug/trace logging")
+	cmd.Flags().BoolVar(&debug, "debug", false, "enable debug logging")
 	cmd.Flags().StringVar(&outputFmt, "output", "text", "output format: text|json")
 }
 
-// newLogger builds a Logger for the CLI. When debug is true, trace-level
-// logging (including packet hex dumps) is enabled.
+// newLogger builds a Logger for the CLI. When debug is true, debug-level
+// logging is enabled.
 func newLogger(debug bool) types.Logger {
 	base := logrus.New()
 	base.SetOutput(os.Stderr)
-	lvl := types.LevelInfo
+	lvl := slog.LevelInfo
 	if debug {
-		lvl = types.LevelTrace
+		lvl = slog.LevelDebug
 	}
 	return newLogrusLogger(base, lvl)
 }
@@ -63,14 +64,14 @@ func dialTACACS(log types.Logger) (*transport.Conn, error) {
 		if secret == "" {
 			return nil, fmt.Errorf("--secret is required for non-TLS connections")
 		}
-		log.WithFunc("cmd.tacacs-cli.dialTACACS").Infof("dialing %s over TCP (legacy obfuscation)", addr)
+		types.WithFunc(log, "cmd.tacacs-cli.dialTACACS").Info("dialing over TCP (legacy obfuscation)", "addr", addr)
 		return transport.Dial(context.Background(), "tcp", addr, []byte(secret))
 	}
 	cfg, err := buildTLSConfig()
 	if err != nil {
 		return nil, err
 	}
-	log.WithFunc("cmd.tacacs-cli.dialTACACS").Infof("dialing %s over TLS 1.3", addr)
+	types.WithFunc(log, "cmd.tacacs-cli.dialTACACS").Info("dialing over TLS 1.3", "addr", addr)
 	return transport.DialTLS(context.Background(), "tcp", addr, cfg)
 }
 

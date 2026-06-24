@@ -2,49 +2,36 @@
 // Copyright (c) 2026 Daniel Wu.
 package types
 
-// Level is a logging severity level, matching the logrus numeric ordering
-// (Panic=0, Fatal=1, Error=2, Warn=3, Info=4, Debug=5, Trace=6).
-type Level int
-
-// Logging levels.
-const (
-	LevelPanic Level = iota
-	LevelFatal
-	LevelError
-	LevelWarn
-	LevelInfo
-	LevelDebug
-	LevelTrace
+import (
+	"context"
+	"log/slog"
 )
 
-// Logger is the structured logging interface used by the library core. The
-// core stays free of any logging dependency; the CLI and server inject an
-// adapter (e.g. logrus) that produces a "func" field naming the caller using
-// the dotted path from the module root, for example "packet.Header.Marshal".
-//
-// Callers performing expensive formatting (such as hex-dumping packets) should
-// guard with Enabled(LevelTrace) so the work is skipped unless trace logging
-// is enabled.
+// Logger is the structured logging interface used by the library core. It is
+// signature-compatible with a subset of *slog.Logger, so a *slog.Logger (or any
+// adapter satisfying this interface) can be injected. Callers pass
+// msg string, args ...any where args are alternating key/value pairs, and
+// levels use slog.Level (slog.LevelDebug, slog.LevelInfo, slog.LevelWarn,
+// slog.LevelError).
 type Logger interface {
-	// WithFunc returns a logger annotated with the dotted caller name used as
-	// the "func" field value.
-	WithFunc(name string) Logger
-	// WithField returns a logger with an additional structured field.
-	WithField(key string, value any) Logger
-	// WithFields returns a logger with additional structured fields.
-	WithFields(fields map[string]any) Logger
-	// Enabled reports whether the given level would be emitted.
-	Enabled(level Level) bool
-	// Tracef logs at trace level (used for detailed upstream request/response).
-	Tracef(format string, args ...any)
-	// Debugf logs at debug level.
-	Debugf(format string, args ...any)
-	// Infof logs at info level.
-	Infof(format string, args ...any)
-	// Warnf logs at warn level.
-	Warnf(format string, args ...any)
-	// Errorf logs at error level.
-	Errorf(format string, args ...any)
+	// Enabled reports whether the given level would be emitted under the
+	// given context.
+	Enabled(ctx context.Context, level slog.Level) bool
+	// Debug logs at Debug level with key-value pairs.
+	Debug(msg string, args ...any)
+	// Info logs at Info level with key-value pairs.
+	Info(msg string, args ...any)
+	// Warn logs at Warn level with key-value pairs.
+	Warn(msg string, args ...any)
+	// Error logs at Error level with key-value pairs.
+	Error(msg string, args ...any)
+	// Log logs at the given level with context and key-value pairs.
+	Log(ctx context.Context, level slog.Level, msg string, args ...any)
+	// With returns a Logger annotated with key-value pairs (alternating key,
+	// value arguments, matching slog.Logger.With).
+	With(args ...any) Logger
+	// WithGroup returns a Logger with the given group name.
+	WithGroup(name string) Logger
 }
 
 // nopLogger is a Logger that discards everything and reports no level enabled.
@@ -54,12 +41,17 @@ type nopLogger struct{}
 // logger used when no logger is configured.
 func NopLogger() Logger { return nopLogger{} }
 
-func (nopLogger) WithFunc(string) Logger           { return nopLogger{} }
-func (nopLogger) WithField(string, any) Logger     { return nopLogger{} }
-func (nopLogger) WithFields(map[string]any) Logger { return nopLogger{} }
-func (nopLogger) Enabled(Level) bool               { return false }
-func (nopLogger) Tracef(string, ...any)            {}
-func (nopLogger) Debugf(string, ...any)            {}
-func (nopLogger) Infof(string, ...any)             {}
-func (nopLogger) Warnf(string, ...any)             {}
-func (nopLogger) Errorf(string, ...any)            {}
+func (nopLogger) Enabled(context.Context, slog.Level) bool        { return false }
+func (nopLogger) Debug(string, ...any)                            {}
+func (nopLogger) Info(string, ...any)                             {}
+func (nopLogger) Warn(string, ...any)                             {}
+func (nopLogger) Error(string, ...any)                            {}
+func (nopLogger) Log(context.Context, slog.Level, string, ...any) {}
+func (nopLogger) With(...any) Logger                              { return nopLogger{} }
+func (nopLogger) WithGroup(string) Logger                         { return nopLogger{} }
+
+// WithFunc returns a Logger annotated with a "func" field naming the caller
+// using the dotted path from the module root (e.g. "packet.Header.Marshal").
+// It is a convenience wrapper for the project-wide "func" field convention,
+// equivalent to l.With("func", name).
+func WithFunc(l Logger, name string) Logger { return l.With("func", name) }

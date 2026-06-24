@@ -62,10 +62,10 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 			if err2 != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
-			log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d server(s) from YANG config", len(cfg.Servers))
+			types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("loaded servers from YANG config", "count", len(cfg.Servers))
 		} else {
 			handler = server.NewConfigHandler(uc)
-			log.WithFunc("cmd.tacacs-cli.runServer").Infof("loaded %d user(s) from config", len(uc.Users))
+			types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("loaded users from config", "count", len(uc.Users))
 		}
 	}
 
@@ -83,13 +83,13 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		log.WithFunc("cmd.tacacs-cli.runServer").Infof("TACACS+ TLS 1.3 test server listening on %s", addr)
+		types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("TACACS+ TLS 1.3 test server listening", "addr", addr)
 	} else {
 		ln, err = transport.Listen("tcp", addr)
 		if err != nil {
 			return err
 		}
-		log.WithFunc("cmd.tacacs-cli.runServer").Infof("TACACS+ test server listening on %s", addr)
+		types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("TACACS+ test server listening", "addr", addr)
 	}
 	defer ln.Close()
 
@@ -100,10 +100,10 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 		}
 		conn := transport.Accept(c, mode(), []byte(secret))
 		go func() {
-			l := log.WithFunc("server.ServeConn").WithField("peer", c.RemoteAddr().String())
-			l.Infof("connection accepted")
+			l := types.WithFunc(log, "server.ServeConn").With("peer", c.RemoteAddr().String())
+			l.Info("connection accepted")
 			if err := srv.ServeConn(context.Background(), conn); err != nil {
-				l.Warnf("session ended: %v", err)
+				l.Warn("session ended", "err", err)
 			}
 		}()
 	}

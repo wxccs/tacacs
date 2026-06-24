@@ -56,7 +56,7 @@ func runAuthz(cmd *cobra.Command, args []string) error {
 	if authzCmdStr != "" {
 		req.Args = append(req.Args, types.Argument{Mandatory: true, Name: "cmd", Value: authzCmdStr})
 	}
-	log.WithFunc("cmd.tacacs-cli.runAuthz").Infof("authorizing user %q service=%s cmd=%q", authzUser, authzService, authzCmdStr)
+	types.WithFunc(log, "cmd.tacacs-cli.runAuthz").Info("authorizing user", "user", authzUser, "service", authzService, "cmd", authzCmdStr)
 	res, err := cl.Authorize(context.Background(), req)
 	if err != nil {
 		return fmt.Errorf("authorization failed: %w", err)

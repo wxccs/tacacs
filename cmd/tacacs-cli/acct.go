@@ -60,7 +60,7 @@ func runAcct(cmd *cobra.Command, args []string) error {
 			{Mandatory: true, Name: "service", Value: "shell"},
 		},
 	}
-	log.WithFunc("cmd.tacacs-cli.runAcct").Infof("accounting %s user=%q task_id=%s", acctAction, acctUser, taskID)
+	types.WithFunc(log, "cmd.tacacs-cli.runAcct").Info("accounting", "action", acctAction, "user", acctUser, "task_id", taskID)
 	res, err := cl.Account(context.Background(), req)
 	if err != nil {
 		return fmt.Errorf("accounting failed: %w", err)

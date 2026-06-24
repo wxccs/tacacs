@@ -25,9 +25,10 @@ tool for interoperability testing:
 - A YANG-aligned configuration model (RFC 9950) loadable from YAML and JSON.
 - The original TACACS protocol (RFC 1492) in both its TCP (ASCII) and UDP
   (simple / extended) encodings.
-- A dependency-free core with an injectable logger; `tacacs-cli` uses
-  [cobra](https://github.com/spf13/cobra) and
-  [viper](https://github.com/spf13/viper).
+- A dependency-free core with an injectable `log/slog`-compatible logger;
+  `tacacs-cli` uses [cobra](https://github.com/spf13/cobra),
+  [viper](https://github.com/spf13/viper) and
+  [logrus](https://github.com/sirupsen/logrus).
 
 > **Status:** work in progress. The library is built in phases; see the project
 > plan. This README is expanded as the higher-level APIs land.
