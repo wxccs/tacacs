@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package protocol implements the TACACS+ authentication, authorization and
 // accounting logic on top of the packet and crypto layers (RFC 8907 §5-8, §11).
 //

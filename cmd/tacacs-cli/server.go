@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package main
 
 import (
@@ -122,7 +123,7 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 	// 3. Build the Metrics implementation. --metrics-addr starts an HTTP
 	//    server exporting /metrics; otherwise NopMetrics keeps the server
 	//    silent.
-	var metrics server.Metrics = server.NopMetrics()
+	metrics := server.NopMetrics()
 	var metricsServer *http.Server
 	if metricsAddr != "" {
 		m := prom.New()

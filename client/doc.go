@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package client provides a high-level TACACS+ client that drives complete
 // authentication, authorization and accounting exchanges over a transport.Conn.
 //

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package server implements a TACACS+ server: it accepts connections, decodes
 // packets, drives the authentication/authorization/accounting state machines
 // via a caller-supplied Handler, and encodes the responses.

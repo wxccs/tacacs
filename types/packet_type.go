@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package types
 
 // PacketType identifies the kind of TACACS+ packet (header byte 1).

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package types
 
 // AuthenAction is the authentication action (START byte 0).

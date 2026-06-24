@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package legacy implements the original TACACS protocol (RFC 1492), distinct
 // from TACACS+ (RFC 8907). RFC 1492 defines two wire-incompatible encodings:
 //

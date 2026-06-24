@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package server
 
 import (
@@ -45,7 +46,7 @@ type StaticSecret struct {
 
 // Get implements SecretProvider.
 func (s StaticSecret) Get(context.Context, net.Addr) (SecretConfig, error) {
-	return SecretConfig{Secret: s.Secret, Mode: s.Mode}, nil
+	return SecretConfig(s), nil
 }
 
 // PrefixRule maps a CIDR to a secret and mode. The first matching rule

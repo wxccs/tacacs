@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package types
 
 // Packet and field size limits (RFC 8907 §4 and §5.1).

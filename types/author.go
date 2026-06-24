@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package types
 
 // AuthorStatus is the authorization REPLY status (REPLY byte 0).

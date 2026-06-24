@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package packet implements the TACACS+ packet header and body marshalling
 // defined by RFC 8907.
 //

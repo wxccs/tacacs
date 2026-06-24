@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package transport implements the TCP and TLS 1.3 transports for TACACS+
 // (RFC 8907 §4.3 and RFC 9887).
 //

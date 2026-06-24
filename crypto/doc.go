@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package crypto implements the TACACS+ body obfuscation defined by
 // RFC 8907 §4.5.
 //

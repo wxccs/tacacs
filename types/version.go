@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package types
 
 // MajorVersion is the major protocol version (RFC 8907 §4.4). It is always

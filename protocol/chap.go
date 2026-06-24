@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package protocol
 
 import "github.com/wxccs/tacacs/errors"

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
-// Package prom implements the server.Metrics interface using Prometheus
-// counters, gauges and histograms. It is kept out of the library core so
-// the server package has zero external metrics dependencies; CLI binaries
-// that want Prometheus export import this package and inject via
-// server.Config.Metrics.
+
 package prom
 
 import (
@@ -13,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/wxccs/tacacs/server"
 	"github.com/wxccs/tacacs/types"
 )

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package legacy
 
 // UDP/TCP ports (RFC 1492 §2/§3).

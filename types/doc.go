@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package types holds the protocol constants and shared primitive types for
 // the tacacs library: protocol versions, packet types, header flags, the
 // authentication/authorization/accounting enumerations, privilege levels, the

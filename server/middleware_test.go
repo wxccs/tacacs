@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 package server
 
 import (
@@ -156,9 +157,9 @@ func (c *captureLogger) write(msg string, args []any) {
 	c.buf.WriteString(msg)
 	for i := 0; i+1 < len(args); i += 2 {
 		c.buf.WriteString(" ")
-		c.buf.WriteString(fmt.Sprint(args[i]))
+		fmt.Fprint(c.buf, args[i])
 		c.buf.WriteString("=")
-		c.buf.WriteString(fmt.Sprint(args[i+1]))
+		fmt.Fprint(c.buf, args[i+1])
 	}
 	c.buf.WriteString("\n")
 }

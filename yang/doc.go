@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Daniel Wu.
+
 // Package yang mirrors the ietf-system-tacacs-plus YANG data model (RFC 9950)
 // as Go configuration structs and loads them from YAML or JSON via viper.
 //
