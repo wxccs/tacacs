@@ -47,6 +47,21 @@ var (
 	readTimeout   time.Duration
 	idleTimeout   time.Duration
 	shutdownWait  time.Duration
+
+	authBackend string
+
+	authHTTPURL      string
+	authHTTPInsecure bool
+
+	authLDAPURL      string
+	authLDAPBaseDN   string
+	authLDAPBindDN   string
+	authLDAPBindPw   string
+	authLDAPFilter   string
+	authLDAPStartTLS bool
+	authLDAPInsecure bool
+
+	authPAMService string
 )
 
 func init() {
@@ -67,6 +82,18 @@ func init() {
 	serverCmd.Flags().DurationVar(&readTimeout, "read-timeout", 30*time.Second, "per-packet body read timeout (0 = disabled)")
 	serverCmd.Flags().DurationVar(&idleTimeout, "idle-timeout", 0, "idle timeout waiting for the next packet on a connection (0 = disabled)")
 	serverCmd.Flags().DurationVar(&shutdownWait, "shutdown-timeout", 10*time.Second, "max time to drain in-flight connections on shutdown")
+
+	serverCmd.Flags().StringVar(&authBackend, "auth-backend", "local", "authentication backend: local|http|ldap|pam (authorization/accounting still come from --config)")
+	serverCmd.Flags().StringVar(&authHTTPURL, "auth-http-url", "", "HTTP authenticator endpoint (must be https unless --auth-http-insecure)")
+	serverCmd.Flags().BoolVar(&authHTTPInsecure, "auth-http-insecure", false, "permit a plain-http auth endpoint (localhost sidecar only)")
+	serverCmd.Flags().StringVar(&authLDAPURL, "auth-ldap-url", "", "LDAP URL: ldaps://host:636 or ldap://host:389")
+	serverCmd.Flags().StringVar(&authLDAPBaseDN, "auth-ldap-basedn", "", "LDAP search base DN")
+	serverCmd.Flags().StringVar(&authLDAPBindDN, "auth-ldap-binddn", "", "LDAP service-account bind DN (empty = anonymous search)")
+	serverCmd.Flags().StringVar(&authLDAPBindPw, "auth-ldap-bindpw", "", "LDAP service-account bind password")
+	serverCmd.Flags().StringVar(&authLDAPFilter, "auth-ldap-filter", "", "LDAP user filter with one %s placeholder (default \"(uid=%s)\")")
+	serverCmd.Flags().BoolVar(&authLDAPStartTLS, "auth-ldap-starttls", false, "upgrade ldap:// to TLS via StartTLS")
+	serverCmd.Flags().BoolVar(&authLDAPInsecure, "auth-ldap-insecure", false, "permit cleartext ldap:// (sends bind password in clear)")
+	serverCmd.Flags().StringVar(&authPAMService, "auth-pam-service", "tacacs", "PAM service name (file under /etc/pam.d); linux+cgo only")
 	rootCmd.AddCommand(serverCmd)
 }
 
@@ -107,7 +134,19 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("compile authorizer rules: %w", err)
 			}
 			backends = &aaaBackends{auth: auth, az: az}
-			handler = &aaa.CompositeHandler{Auth: auth, Az: az}
+			// The authenticator may be overridden by an external backend
+			// (--auth-backend). Authorization rules and accounting still come
+			// from --config; only credential verification is delegated.
+			var authn aaa.Authenticator = auth
+			if authBackend != "local" {
+				external, err := buildAuthenticator()
+				if err != nil {
+					return err
+				}
+				authn = external
+				types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("using external auth backend", "backend", authBackend)
+			}
+			handler = &aaa.CompositeHandler{Auth: authn, Az: az}
 			types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("loaded users from config", "users", len(uc.Users), "rules", len(rules))
 		}
 	}
@@ -187,7 +226,9 @@ func runServerCmd(cmd *cobra.Command, args []string) error {
 				if err := backends.az.Reload(rules); err != nil {
 					return err
 				}
-				backends.auth.Reload(uc)
+				if authBackend == "local" {
+					backends.auth.Reload(uc)
+				}
 				types.WithFunc(log, "cmd.tacacs-cli.runServer").Info("config reloaded", "users", len(uc.Users), "rules", len(rules))
 				return nil
 			}
@@ -369,6 +410,33 @@ func buildAccounter(log types.Logger) (aaa.Accounter, func(), error) {
 		return fa, func() { _ = fa.Close() }, nil
 	}
 	return nil, nil, nil
+}
+
+// buildAuthenticator constructs the external authentication backend selected by
+// --auth-backend. "local" is handled by the caller (bcrypt over --config) and
+// is not valid here. Each backend enforces its own transport security.
+func buildAuthenticator() (aaa.Authenticator, error) {
+	switch authBackend {
+	case "http":
+		return aaa.NewHTTPAuthenticator(aaa.HTTPConfig{
+			Endpoint:      authHTTPURL,
+			AllowInsecure: authHTTPInsecure,
+		})
+	case "ldap":
+		return aaa.NewLDAPAuthenticator(aaa.LDAPConfig{
+			URL:           authLDAPURL,
+			BindDN:        authLDAPBindDN,
+			BindPassword:  authLDAPBindPw,
+			BaseDN:        authLDAPBaseDN,
+			UserFilter:    authLDAPFilter,
+			StartTLS:      authLDAPStartTLS,
+			AllowInsecure: authLDAPInsecure,
+		})
+	case "pam":
+		return aaa.NewPAMAuthenticator(aaa.PAMConfig{Service: authPAMService})
+	default:
+		return nil, fmt.Errorf("unknown --auth-backend %q (want local|http|ldap|pam)", authBackend)
+	}
 }
 
 // userConfigToRules translates a UserConfig into an ordered []aaa.CommandRule

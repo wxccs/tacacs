@@ -726,3 +726,126 @@ func TestTacquitoClientToLocalServer_TLS_PAP(t *testing.T) {
 	require.NoError(t, tq.Unmarshal(resp.Body, &reply))
 	assert.Equal(t, tq.AuthenStatusPass, reply.Status, "tacquito client TLS PAP should pass against local server")
 }
+
+// ---------------------------------------------------------------------------
+// Multi-session interop: a single connection carries multiple AAA operations,
+// exercising seq_no incrementing and per-packet session state across both
+// implementations. A NAS commonly pipelines auth→authorize→accounting on one
+// connection; a cross-implementation regression here would surface as a silent
+// hang or protocol error after the first exchange.
+// ---------------------------------------------------------------------------
+
+// TestLocalClientToTacquitoServer_MultiSession drives a PAP authentication,
+// authorization and accounting exchange on a single connection to a tacquito
+// server. All three must succeed without redialling.
+func TestLocalClientToTacquitoServer_MultiSession(t *testing.T) {
+	addr, cancel := startTacquitoServer(t, false)
+	defer cancel()
+
+	conn, err := transport.Dial(context.Background(), "tcp", addr, []byte(testSecret))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	c, err := client.New(conn)
+	require.NoError(t, err)
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel2()
+
+	authReply, err := c.Authenticate(ctx, client.AuthenRequest{
+		Action: types.AuthenLogin, PrivLvl: 0, Type: types.AuthenTypePAP, Service: types.AuthenServiceLogin,
+		User: testUser, Port: "tty0", RemAddr: "127.0.0.1", Data: []byte(testPassword),
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, types.AuthenStatusPass, authReply.Status, "PAP should pass on multi-session connection")
+
+	authorReply, err := c.Authorize(ctx, client.AuthorRequest{
+		Method: types.AuthenMethodTacacsPlus, PrivLvl: 0, Type: types.AuthenTypePAP,
+		Service: types.AuthenServiceLogin, User: testUser, Port: "tty0", RemAddr: "127.0.0.1",
+		Args: []types.Argument{{Mandatory: true, Name: "cmd", Value: "show"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.AuthorStatusPassAdd, authorReply.Status, "Authorize should pass on multi-session connection")
+
+	acctReply, err := c.Account(ctx, client.AcctRequest{
+		Flags: types.AcctFlagStart, Method: types.AuthenMethodTacacsPlus, PrivLvl: 0,
+		Type: types.AuthenTypeNotSet, Service: types.AuthenServiceLogin,
+		User: testUser, Port: "tty0", RemAddr: "127.0.0.1",
+		Args: []types.Argument{{Mandatory: true, Name: "task_id", Value: "ms-1"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, types.AcctStatusSuccess, acctReply.Status, "Accounting should succeed on multi-session connection")
+}
+
+// ---------------------------------------------------------------------------
+// Bad-secret interop: when client and server hold different shared secrets,
+// the server MUST reject the exchange (not silently pass) and the client
+// MUST observe a failure (not hang or panic). These properties are
+// security-critical: a silent pass would let an attacker strip obfuscation.
+// ---------------------------------------------------------------------------
+
+// TestLocalClientToTacquitoServer_BadSecret dials a tacquito server with the
+// wrong shared secret. Authentication must NOT pass; the client must receive
+// either an error or a non-PASS reply without hanging.
+func TestLocalClientToTacquitoServer_BadSecret(t *testing.T) {
+	addr, cancel := startTacquitoServer(t, false)
+	defer cancel()
+
+	conn, err := transport.Dial(context.Background(), "tcp", addr, []byte("wrong-secret"))
+	require.NoError(t, err)
+	defer conn.Close()
+
+	c, err := client.New(conn)
+	require.NoError(t, err)
+
+	ctx, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel2()
+
+	reply, err := c.Authenticate(ctx, client.AuthenRequest{
+		Action: types.AuthenLogin, PrivLvl: 0, Type: types.AuthenTypePAP, Service: types.AuthenServiceLogin,
+		User: testUser, Port: "tty0", RemAddr: "127.0.0.1", Data: []byte(testPassword),
+	}, nil)
+	// Either an error or a non-PASS reply is acceptable. A PASS would be a
+	// critical security regression.
+	if err == nil {
+		assert.NotEqual(t, types.AuthenStatusPass, reply.Status, "BAD SECRET must not pass authentication")
+	}
+}
+
+// TestTacquitoClientToLocalServer_BadSecret sends a PAP START from a tacquito
+// client using the wrong secret to the local server. The server must not pass
+// the authentication. An error reply or a non-PASS status is acceptable.
+func TestTacquitoClientToLocalServer_BadSecret(t *testing.T) {
+	addr, cancel := startLocalServer(t)
+	defer cancel()
+
+	c, err := tq.NewClient(tq.SetClientDialer("tcp", addr, []byte("wrong-secret")))
+	require.NoError(t, err)
+	defer c.Close()
+
+	pkt := tq.NewPacket(
+		tq.SetPacketHeader(tq.NewHeader(
+			tq.SetHeaderVersion(tq.Version{MajorVersion: tq.MajorVersion, MinorVersion: tq.MinorVersionOne}),
+			tq.SetHeaderType(tq.Authenticate),
+			tq.SetHeaderRandomSessionID(),
+		)),
+		tq.SetPacketBodyUnsafe(tq.NewAuthenStart(
+			tq.SetAuthenStartAction(tq.AuthenActionLogin),
+			tq.SetAuthenStartPrivLvl(tq.PrivLvl(0)),
+			tq.SetAuthenStartType(tq.AuthenTypePAP),
+			tq.SetAuthenStartService(tq.AuthenServiceLogin),
+			tq.SetAuthenStartPort("tty0"),
+			tq.SetAuthenStartRemAddr("127.0.0.1"),
+			tq.SetAuthenStartUser(tq.AuthenUser(testUser)),
+			tq.SetAuthenStartData(tq.AuthenData(testPassword)),
+		)),
+	)
+	resp, err := c.Send(pkt)
+	// An error or a non-PASS reply is acceptable; PASS would be a regression.
+	if err == nil && resp != nil {
+		var reply tq.AuthenReply
+		if uerr := tq.Unmarshal(resp.Body, &reply); uerr == nil {
+			assert.NotEqual(t, tq.AuthenStatusPass, reply.Status, "BAD SECRET must not pass authentication")
+		}
+	}
+}
