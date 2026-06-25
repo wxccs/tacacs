@@ -34,6 +34,12 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - name: Install PAM development headers
+        # cmd/tacacs-cli/aaa/pam_authenticator_linux.go (build tag: linux && cgo)
+        # imports github.com/msteinert/pam/v2, a cgo package that requires
+        # security/pam_appl.h provided by libpam0g-dev on Debian/Ubuntu.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpam0g-dev
+
       - name: Download dependencies
         run: go mod download
 
@@ -87,6 +93,11 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      - name: Install PAM development headers
+        # golangci-lint typechecks cmd/tacacs-cli/aaa, which on linux pulls in
+        # the cgo pam_authenticator_linux.go and needs security/pam_appl.h.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpam0g-dev
+
       - name: golangci-lint
         # golangci-lint-action v9 supports golangci-lint v2 (v7+); v6 supports
         # v1 only. The v1 binary (built with Go 1.24) cannot analyze code
@@ -108,6 +119,12 @@ jobs:
         with:
           go-version: "1.26"
           cache: true
+
+      - name: Install PAM development headers
+        # Fuzz currently targets crypto/legacy/packet/transport/types, but
+        # keep PAM headers installed so future fuzz additions in cmd/tacacs-cli
+        # don't silently break on the linux+cgo build tag.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpam0g-dev
 
       - name: Fuzz parsers briefly
         # A short run of every Fuzz* target catches crashes/panics in the code
