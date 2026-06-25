@@ -71,19 +71,24 @@ func ReadPacket(r io.Reader) (packet.Header, []byte, error) {
 
 // WritePacket writes a TACACS+ packet (header + body) to w. The header length
 // field is set to len(body) before marshalling.
+//
+// Header and body are concatenated into a single buffer and written with one
+// w.Write call. This is required by strict TACACS+ clients (notably Huawei
+// VRP) that reject packets whose 12-byte header arrives in its own TCP
+// segment ahead of the body.
 func WritePacket(w io.Writer, hdr packet.Header, body []byte) error {
 	hdr.Length = uint32(len(body))
 	hb, err := hdr.MarshalBinary()
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(hb); err != nil {
+	if len(body) == 0 {
+		_, err = w.Write(hb)
 		return err
 	}
-	if len(body) > 0 {
-		if _, err := w.Write(body); err != nil {
-			return err
-		}
-	}
-	return nil
+	buf := make([]byte, 0, len(hb)+len(body))
+	buf = append(buf, hb...)
+	buf = append(buf, body...)
+	_, err = w.Write(buf)
+	return err
 }

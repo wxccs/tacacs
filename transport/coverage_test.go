@@ -81,6 +81,87 @@ func TestReadPacketEOF(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// countingWriter records the number of Write calls and concatenates their
+// payloads, so tests can assert both call count and byte ordering.
+type countingWriter struct {
+	writes int
+	buf    bytes.Buffer
+}
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.writes++
+	return c.buf.Write(p)
+}
+
+func TestWritePacketSingleWriteWithBody(t *testing.T) {
+	hdr := packet.Header{
+		Version: types.VersionDefault, Type: types.PacketAuthentication, SeqNo: 1,
+		SessionID: 0xdeadbeef,
+	}
+	body := []byte("the quick brown fox")
+
+	var c countingWriter
+	require.NoError(t, WritePacket(&c, hdr, body))
+
+	assert.Equal(t, 1, c.writes, "header+body must be sent in a single Write")
+
+	wantHdr := hdr
+	wantHdr.Length = uint32(len(body))
+	hb, err := wantHdr.MarshalBinary()
+	require.NoError(t, err)
+
+	want := make([]byte, 0, len(hb)+len(body))
+	want = append(want, hb...)
+	want = append(want, body...)
+	assert.Equal(t, want, c.buf.Bytes(), "output must be header followed by body")
+
+	gotHdr, gotBody, err := ReadPacket(&c.buf)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(len(body)), gotHdr.Length)
+	assert.Equal(t, body, gotBody)
+}
+
+func TestWritePacketSingleWriteEmptyBody(t *testing.T) {
+	hdr := packet.Header{Version: types.VersionDefault, Type: types.PacketAuthentication, SeqNo: 1}
+	hb, err := hdr.MarshalBinary()
+	require.NoError(t, err)
+
+	var c countingWriter
+	require.NoError(t, WritePacket(&c, hdr, nil))
+
+	assert.Equal(t, 1, c.writes, "header-only packet must still be a single Write")
+	assert.Equal(t, hb, c.buf.Bytes())
+
+	gotHdr, gotBody, err := ReadPacket(&c.buf)
+	require.NoError(t, err)
+	assert.Empty(t, gotBody)
+	assert.Equal(t, uint32(0), gotHdr.Length)
+}
+
+func TestWritePacketSingleWriteOnTCPPipe(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+
+	hdr := packet.Header{
+		Version: types.VersionDefault, Type: types.PacketAuthentication, SeqNo: 2,
+		SessionID: 0xcafef00d,
+	}
+	body := []byte("huawei-vrp-friendly payload")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- WritePacket(a, hdr, body)
+	}()
+
+	gotHdr, gotBody, err := ReadPacket(b)
+	require.NoError(t, err)
+	require.NoError(t, <-done)
+	assert.Equal(t, uint32(len(body)), gotHdr.Length)
+	assert.Equal(t, body, gotBody)
+	assert.Equal(t, hdr.SessionID, gotHdr.SessionID)
+}
+
 func TestDialRefused(t *testing.T) {
 	// Port 1 is a privileged port with no listener; the connect is refused.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
