@@ -74,7 +74,7 @@ jobs:
       - name: Upload coverage to Codecov
         # Public repos can use Codecov without a token. The action auto-detects
         # the token from the CODECOV_TOKEN secret when one is configured.
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.out
           fail_ci_if_error: false
