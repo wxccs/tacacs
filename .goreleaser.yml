@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Daniel Wu.
+#
+# goreleaser config: builds the tacacs-cli binary for linux/darwin on
+# amd64/arm64 and publishes a draft GitHub Release. The draft is reviewed
+# and published manually after sanity-checking the artifacts.
+#
+# Validate locally with:   goreleaser check
+# Snapshot build with:     goreleaser release --snapshot --clean
+
+version: 2
+
+project_name: tacacs
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: tacacs-cli
+    main: ./cmd/tacacs-cli
+    binary: tacacs-cli
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    ids:
+      - tacacs-cli
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  draft: true
+  prerelease: auto
+  name_template: "{{ .ProjectName }} {{ .Version }}"

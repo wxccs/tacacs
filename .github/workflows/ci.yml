@@ -10,6 +10,12 @@ on:
     branches: [main, "feat/**"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_interop:
+        description: "Run the tacquito interop job"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -52,12 +58,21 @@ jobs:
       - name: Print coverage
         run: go tool cover -func=coverage.out
 
-      - name: Upload coverage
+      - name: Upload coverage artifact
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage.out
+
+      - name: Upload coverage to Codecov
+        # Public repos can use Codecov without a token. The action auto-detects
+        # the token from the CODECOV_TOKEN secret when one is configured.
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.out
+          fail_ci_if_error: false
+          verbose: true
 
   lint:
     name: golangci-lint
@@ -98,3 +113,36 @@ jobs:
         # A short run of every Fuzz* target catches crashes/panics in the code
         # paths that parse untrusted network input, without lengthening CI.
         run: make fuzz FUZZTIME=15s
+
+  interop:
+    name: Interop against tacquito
+    runs-on: ubuntu-latest
+    # The interop module (interop/go.mod) holds cross-implementation tests
+    # against github.com/facebookincubator/tacquito. It is intentionally
+    # decoupled from the main module so the main module does not need to
+    # depend on tacquito. Run it on manual dispatch or when the interop
+    # directory, the main module's public API, or this workflow changes.
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.run_interop == true
+    defaults:
+      run:
+        working-directory: interop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            interop/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run interop tests
+        run: go test -race ./...

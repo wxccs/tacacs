@@ -52,6 +52,26 @@ including headers and bodies (hex-dumped for binary protocols).
 - The coverage target is ≥ 90% per package; check with `make cover`.
 - Integration tests run end-to-end client/server loops over TCP and TLS.
 
+## Interoperability tests
+
+Cross-implementation tests against
+[facebookincubator/tacquito](https://github.com/facebookincubator/tacquito)
+live in the `interop/` directory, which is a **separate Go module** so the
+main module does not need to depend on tacquito. The suite covers both
+directions (local client → tacquito server, tacquito client → local server)
+for PAP, ASCII, authorize, accounting, TLS, multi-session exchanges and
+bad-secret rejection.
+
+Run locally:
+
+```bash
+make test-interop           # cd interop && go test -race ./...
+```
+
+The interop job runs in CI on manual dispatch via the `Run workflow` button
+(`run_interop=true`). It is not on the default PR path to avoid coupling
+PR feedback to tacquito upstream changes.
+
 ## Pull requests
 
 - Open a pull request against `main`.

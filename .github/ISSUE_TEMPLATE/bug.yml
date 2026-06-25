@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Daniel Wu.
+
+name: Bug report
+description: Report a defect in the tacacs library or tacacs-cli tool
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in the
+        sections below — the more detail you provide, the faster we can
+        reproduce and fix it.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-paragraph description of the problem.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - packet / crypto / types (protocol core)
+        - protocol (AAA state machines)
+        - transport (TCP / TLS / PROXY)
+        - server
+        - client
+        - cmd/tacacs-cli
+        - legacy (RFC 1492)
+        - yang (RFC 9950)
+        - docs
+        - CI / build
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: tacacs version
+      placeholder: "output of `tacacs-cli --version` or git commit"
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      placeholder: "output of `go version`"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or code that triggers the issue.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include relevant logs, stack traces, or packet hex dumps.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security-sensitive?
+      options:
+        - label: This issue involves authentication, cryptography, TLS or shared secrets
+          required: false

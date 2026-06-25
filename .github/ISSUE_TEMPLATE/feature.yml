@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Daniel Wu.
+
+name: Feature request
+description: Suggest a new feature or enhancement for the tacacs library
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Tell us what you want and why — clear
+        motivation helps us prioritize and design the right solution.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What's currently hard or impossible to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like the library or CLI to do instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you considered and why they don't fit.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - packet / crypto / types (protocol core)
+        - protocol (AAA state machines)
+        - transport (TCP / TLS / PROXY)
+        - server
+        - client
+        - cmd/tacacs-cli
+        - legacy (RFC 1492)
+        - yang (RFC 9950)
+        - docs
+        - CI / build
+        - other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: rfc
+    attributes:
+      label: RFC relevance
+      options:
+        - label: This relates to RFC 8907 / 9887 / 9950 / 1492 conformance
+          required: false
+
+  - type: input
+    id: rfc-section
+    attributes:
+      label: RFC section (if applicable)
+      placeholder: "e.g. RFC 8907 §4.5"

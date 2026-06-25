@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Daniel Wu.
+
+// The workspace ties the main module to the interop module so that IDEs and
+// gopls resolve cross-module imports without requiring a published tag.
+// `go build` and `go test` at the repository root operate on the main module
+// only; the interop module is exercised via `cd interop && go test ./...`.
+
+go 1.26.4
+
+use (
+	.
+	./interop
+)

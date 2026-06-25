@@ -1,6 +1,9 @@
 # tacacs
 
+[![CI](https://github.com/wxccs/tacacs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wxccs/tacacs/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/wxccs/tacacs/branch/main/graph/badge.svg)](https://codecov.io/gh/wxccs/tacacs)
 [![Go Reference](https://pkg.go.dev/badge/github.com/wxccs/tacacs.svg)](https://pkg.go.dev/github.com/wxccs/tacacs)
+[![Go Report Card](https://goreportcard.com/badge/github.com/wxccs/tacacs)](https://goreportcard.com/report/github.com/wxccs/tacacs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 A commercial-grade Go implementation of the TACACS+ protocol suite.
@@ -25,6 +28,16 @@ tool for interoperability testing:
 - A YANG-aligned configuration model (RFC 9950) loadable from YAML and JSON.
 - The original TACACS protocol (RFC 1492) in both its TCP (ASCII) and UDP
   (simple / extended) encodings.
+- Multi-NAS deployments: per-NAS shared secrets via DNS or prefix-based
+  `SecretProvider`, and **PROXY protocol v1 (text) and v2 (binary)** auto-
+  detection so the server sees the real client address behind a Layer 4
+  load balancer (HAProxy, Envoy, AWS NLB, Cloudflare Spectrum).
+- DoS hardening: idle/read timeouts, fuzz-tested parsers, session-TTL
+  sweeper, and strict flag-policy enforcement.
+- Pluggable AAA backends: PAM, LDAP, and HTTP authenticators in
+  `cmd/tacacs-cli/aaa`; bring-your-own via the `server.Handler` interface.
+- Observability: Prometheus metrics (AAA latency, status histograms,
+  active sessions) and structured audit logging via `log/slog`.
 - A dependency-free core with an injectable `log/slog`-compatible logger;
   `tacacs-cli` uses [cobra](https://github.com/spf13/cobra),
   [viper](https://github.com/spf13/viper) and
@@ -32,8 +45,8 @@ tool for interoperability testing:
 
 > **Status:** the protocol core, transport, AAA backends and CLI are complete
 > and covered by fuzz targets, race-tested unit/integration tests and a
-> cross-implementation interop suite against
-> [tacquito](https://github.com/facebookincubator/tacquito). See
+> cross-implementation interop suite (in the separate `interop/` module)
+> against [tacquito](https://github.com/facebookincubator/tacquito). See
 > [`docs/operations.md`](./docs/operations.md) for production deployment
 > guidance and [`docs/load-test.md`](./docs/load-test.md) for measured
 > throughput.
@@ -170,6 +183,7 @@ For low-level packet construction and inspection, the `packet`, `crypto`,
 ├── server/          server-side handlers
 ├── legacy/          RFC 1492 original TACACS
 ├── cmd/tacacs-cli/  command-line tool
+├── interop/         separate Go module: cross-implementation tests vs tacquito
 └── docs/            examples, RFC texts, operations & load-test guides
 ```
 

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Daniel Wu.
+
+# Build artifacts
+/dist/
+/tacacs-cli
+/tacacs-cli.exe
+*.test
+*.out
+coverage.out
+coverage.html
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Go workspace (intentionally tracked: go.work ties main module to interop).
+# Uncomment to ignore local workspace files:
+# go.work
+# go.work.sum
+
+# Operating system
+Thumbs.db

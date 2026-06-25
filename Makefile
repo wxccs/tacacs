@@ -8,7 +8,7 @@ FUZZTIME ?= 20s
 # FUZZPKGS lists packages whose decoders parse untrusted input.
 FUZZPKGS := ./crypto ./legacy ./packet ./transport ./transport/proxy ./types
 
-.PHONY: all fmt vet build test cover lint tidy clean fuzz
+.PHONY: all fmt vet build test cover lint tidy clean fuzz test-interop
 
 all: build
 
@@ -49,6 +49,11 @@ fuzz:
 			$(GOCMD) test $$pkg -run '^$$' -fuzz "^$$fn$$" -fuzztime=$(FUZZTIME) || exit 1; \
 		done; \
 	done
+
+## test-interop: run cross-implementation tests against tacquito (interop/).
+## The interop module is a separate Go module; cd into it and run its tests.
+test-interop:
+	cd interop && $(GOCMD) test -race ./...
 
 ## clean: remove generated artifacts.
 clean:
