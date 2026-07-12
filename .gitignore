@@ -17,6 +17,9 @@ coverage.html
 *.swo
 .DS_Store
 
+# Claude Code local session state (plans, worktrees, etc.)
+.claude/
+
 # Go workspace (intentionally tracked: go.work ties main module to interop).
 # Uncomment to ignore local workspace files:
 # go.work

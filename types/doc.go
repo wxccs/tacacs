@@ -4,9 +4,16 @@
 // Package types holds the protocol constants and shared primitive types for
 // the tacacs library: protocol versions, packet types, header flags, the
 // authentication/authorization/accounting enumerations, privilege levels, the
-// Argument codec, packet size limits, and the Logger interface used by the
-// core library.
+// Argument codec, the predefined AVP name constants and constructors, the
+// disconnect-cause enumerations, packet size limits, and the Logger
+// interface used by the core library.
 //
 // Constant values follow RFC 8907 ("TACACS+ Protocol"). Each enumeration is a
 // named type so that distinct value spaces cannot be mixed at compile time.
+//
+// The predefined AVP name constants (ArgNameService, ArgNameCmd, ...) cover
+// the attribute-value pairs defined by the Cisco IOS XE TACACS+ reference
+// and the Huawei HWTACACS attribute table; where Cisco and Huawei disagree
+// on the spelling (e.g. disc-cause vs disc_cause) both forms are provided.
+// Disconnect-cause codes are enumerated by DiscCause and DiscCauseExt.
 package types
