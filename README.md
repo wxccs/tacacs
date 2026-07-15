@@ -23,11 +23,15 @@ tool for interoperability testing:
 
 - Authentication (ASCII, PAP, CHAP, MS-CHAP, MS-CHAPv2), authorization and
   accounting (start / stop / watchdog) per RFC 8907.
-- Predefined attribute-value pairs: named `ArgName` constants, constructors and
-  disconnect-cause enumerations covering the Cisco IOS XE AV pair reference,
-  the Huawei HWTACACS attribute table and the Juniper Junos vendor-specific
-  attributes, including both hyphenated (`disc-cause`) and underscore
-  (`disc_cause`) spellings for cross-vendor interop.
+- Predefined attribute-value pairs, organized by vendor: `avp.go` holds the
+  pairs shared by all vendors (RFC 8907 §6/§8.3 base set plus the Cisco &
+  Huawei common traditional pairs, and the disconnect-cause dual naming),
+  `avp_cisco.go` the full Cisco IOS TACACS+ AV pair reference, `avp_huawei.go`
+  the HWTACACS rate/tunnel/ftp pairs, `avp_juniper.go` the Junos exec attributes
+  and `avp_paloalto.go` the PAN-OS administrator VSAs; disconnect-cause codes
+  are enumerated by `DiscCause` and `DiscCauseExt`, with both hyphenated
+  (`disc-cause`) and underscore (`disc_cause`) spellings for cross-vendor
+  interop.
 - MD5-based body obfuscation (RFC 8907 §4.5) and TLS 1.3 transport (RFC 9887),
   which obsoletes obfuscation over TLS.
 - A YANG-aligned configuration model (RFC 9950) loadable from YAML and JSON.

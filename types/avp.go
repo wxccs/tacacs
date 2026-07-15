@@ -12,65 +12,64 @@ import (
 
 // ArgName is the name of a predefined TACACS+ argument-value pair. It is a
 // named string so that predefined AVP names are distinct from ad-hoc strings
-// at compile time, while remaining zero-cost to use in an Argument. The
-// predefined names below are drawn from the Cisco IOS XE "TACACS Attribute-
-// Value Pairs" reference and the Huawei HWTACACS attribute table. Where Cisco
-// and Huawei disagree on the separator (hyphen vs underscore, e.g. disc-cause
-// / disc_cause), both spellings are provided and the Huawei variant is
-// suffixed "Underscore".
+// at compile time, while remaining zero-cost to use in an Argument. The common
+// names below are shared by all vendors (RFC 8907 plus the Cisco/Huawei
+// traditional pairs); vendor-specific names live in avp_cisco.go,
+// avp_huawei.go, avp_juniper.go and avp_paloalto.go. Where Cisco and Huawei
+// disagree on the separator (hyphen vs underscore, e.g. disc-cause /
+// disc_cause), both spellings are provided and the Huawei variant is suffixed
+// "Underscore".
 type ArgName string
 
-// Authentication and authorization AV pairs (service=shell, cmd, cmd-arg,
-// priv-lvl, ...). Used in authorization REQUEST and REPLY argument lists.
+// Authentication and authorization AV pairs shared by all vendors: the
+// RFC 8907 §6 base set (service, cmd, cmd-arg, priv-lvl, protocol) plus the
+// Cisco & Huawei common traditional pairs. service MUST always be present in
+// an authorization or accounting request (RFC 8907 §5.1). Cisco-only pairs
+// (callback-dialstring, inacl, outacl, noescape, old-prompts, routing, route,
+// ...) are in avp_cisco.go.
 const (
-	ArgNameService            ArgName = "service"
-	ArgNameCmd                ArgName = "cmd"
-	ArgNameCmdArg             ArgName = "cmd-arg"
-	ArgNamePrivLvl            ArgName = "priv-lvl" // authorization uses a hyphen
-	ArgNameProtocol           ArgName = "protocol"
-	ArgNameAcl                ArgName = "acl"
-	ArgNameAddr               ArgName = "addr"
-	ArgNameAddrPool           ArgName = "addr-pool"
-	ArgNameAutocmd            ArgName = "autocmd"
-	ArgNameCallbackDialstring ArgName = "callback-dialstring"
-	ArgNameCallbackLine       ArgName = "callback-line"
-	ArgNameCallbackRotary     ArgName = "callback-rotary"
-	ArgNameDnsServers         ArgName = "dns-servers"
-	ArgNameIdletime           ArgName = "idletime"
-	ArgNameInacl              ArgName = "inacl"  // indexed: inacl#<n>
-	ArgNameOutacl             ArgName = "outacl" // indexed: outacl#<n>
-	ArgNameIpAddresses        ArgName = "ip-addresses"
-	ArgNameGwPassword         ArgName = "gw-password" // secret-bearing
-	ArgNameNocallbackVerify   ArgName = "nocallback-verify"
-	ArgNameNoescape           ArgName = "noescape"
-	ArgNameNohangup           ArgName = "nohangup"
-	ArgNameOldPrompts         ArgName = "old-prompts"
-	ArgNameRouting            ArgName = "routing"
-	ArgNameRoute              ArgName = "route" // indexed: route#<n>
-	ArgNameSourceIP           ArgName = "source-ip"
+	// RFC 8907 §6 authorization AV pairs (shared by all vendors).
+	ArgNameService  ArgName = "service"
+	ArgNameCmd      ArgName = "cmd"
+	ArgNameCmdArg   ArgName = "cmd-arg"
+	ArgNamePrivLvl  ArgName = "priv-lvl" // authorization uses a hyphen
+	ArgNameProtocol ArgName = "protocol"
+	// Cisco & Huawei shared authorization AV pairs.
+	ArgNameAcl              ArgName = "acl"
+	ArgNameAddr             ArgName = "addr"
+	ArgNameAddrPool         ArgName = "addr-pool"
+	ArgNameAutocmd          ArgName = "autocmd"
+	ArgNameCallbackLine     ArgName = "callback-line"
+	ArgNameDnsServers       ArgName = "dns-servers"
+	ArgNameIdletime         ArgName = "idletime"
+	ArgNameIpAddresses      ArgName = "ip-addresses"
+	ArgNameGwPassword       ArgName = "gw-password" // secret-bearing
+	ArgNameNocallbackVerify ArgName = "nocallback-verify"
+	ArgNameNohangup         ArgName = "nohangup"
+	ArgNameSourceIP         ArgName = "source-ip"
+	ArgNameTunnelID         ArgName = "tunnel-id" // Cisco & Huawei: VPDN tunnel username
 )
 
-// Accounting AV pairs (bytes_in, task_id, elapsed_time, ...). Used in
-// accounting REQUEST argument lists.
+// Accounting AV pairs (RFC 8907 §8.3), shared by all vendors. Cisco-only
+// accounting pairs (nas-rx-speed, nas-tx-speed, mlp-links-max, mlp-sess-id,
+// pre-session-time, Fax-*, ...) are in avp_cisco.go.
 const (
-	ArgNameBytesIn        ArgName = "bytes_in"
-	ArgNameBytesOut       ArgName = "bytes_out"
-	ArgNamePaksIn         ArgName = "paks_in"
-	ArgNamePaksOut        ArgName = "paks_out"
-	ArgNameElapsedTime    ArgName = "elapsed_time"
-	ArgNameTaskID         ArgName = "task_id"
-	ArgNameTimezone       ArgName = "timezone"
-	ArgNameStartTime      ArgName = "start_time"
-	ArgNameStopTime       ArgName = "stop_time"
-	ArgNameEvent          ArgName = "event"
-	ArgNameReason         ArgName = "reason"
-	ArgNamePort           ArgName = "port"
-	ArgNamePrivLevel      ArgName = "priv_level" // accounting uses an underscore
-	ArgNameNasRxSpeed     ArgName = "nas-rx-speed"
-	ArgNameNasTxSpeed     ArgName = "nas-tx-speed"
-	ArgNameMlpLinksMax    ArgName = "mlp-links-max"
-	ArgNameMlpSessID      ArgName = "mlp-sess-id"
-	ArgNamePreSessionTime ArgName = "pre-session-time"
+	ArgNameBytes       ArgName = "bytes" // total bytes transferred
+	ArgNamePaks        ArgName = "paks"  // total packets transferred
+	ArgNameBytesIn     ArgName = "bytes_in"
+	ArgNameBytesOut    ArgName = "bytes_out"
+	ArgNamePaksIn      ArgName = "paks_in"
+	ArgNamePaksOut     ArgName = "paks_out"
+	ArgNameElapsedTime ArgName = "elapsed_time"
+	ArgNameTaskID      ArgName = "task_id"
+	ArgNameTimezone    ArgName = "timezone"
+	ArgNameStartTime   ArgName = "start_time"
+	ArgNameStopTime    ArgName = "stop_time"
+	ArgNameEvent       ArgName = "event"
+	ArgNameReason      ArgName = "reason"
+	ArgNameErrMsg      ArgName = "err_msg"
+	ArgNamePort        ArgName = "port"
+	ArgNamePrivLevel   ArgName = "priv_level" // accounting uses an underscore
 )
 
 // Disconnect-cause AV pairs. Cisco uses the hyphenated spelling (disc-cause,
@@ -82,19 +81,6 @@ const (
 	ArgNameDiscCauseUnderscore    ArgName = "disc_cause"
 	ArgNameDiscCauseExt           ArgName = "disc-cause-ext"
 	ArgNameDiscCauseExtUnderscore ArgName = "disc_cause_ext"
-)
-
-// Huawei-specific AV pairs. dnaverage/dnpeak/upaverage/uppeak report link
-// rates in bit/s; tunnel-id/tunnel-type describe VPDN tunnels; ftpdir sets the
-// FTP user's initial directory. These are not part of the Cisco set.
-const (
-	ArgNameDnAverage  ArgName = "dnaverage"
-	ArgNameDnPeak     ArgName = "dnpeak"
-	ArgNameUpAverage  ArgName = "upaverage"
-	ArgNameUpPeak     ArgName = "uppeak"
-	ArgNameTunnelID   ArgName = "tunnel-id"
-	ArgNameTunnelType ArgName = "tunnel-type"
-	ArgNameFtpDir     ArgName = "ftpdir"
 )
 
 // NewArg builds an Argument with the given name, value and mandatory flag.

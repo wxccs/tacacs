@@ -20,33 +20,29 @@ func TestArgNames(t *testing.T) {
 		name  ArgName
 		value string
 	}{
-		// Authentication / authorization AV pairs.
+		// RFC 8907 §6 authorization AV pairs (shared by all vendors).
 		{ArgNameService, "service"},
 		{ArgNameCmd, "cmd"},
 		{ArgNameCmdArg, "cmd-arg"},
 		{ArgNamePrivLvl, "priv-lvl"},
 		{ArgNameProtocol, "protocol"},
+		// Cisco & Huawei shared authorization AV pairs.
 		{ArgNameAcl, "acl"},
 		{ArgNameAddr, "addr"},
 		{ArgNameAddrPool, "addr-pool"},
 		{ArgNameAutocmd, "autocmd"},
-		{ArgNameCallbackDialstring, "callback-dialstring"},
 		{ArgNameCallbackLine, "callback-line"},
-		{ArgNameCallbackRotary, "callback-rotary"},
 		{ArgNameDnsServers, "dns-servers"},
 		{ArgNameIdletime, "idletime"},
-		{ArgNameInacl, "inacl"},
-		{ArgNameOutacl, "outacl"},
 		{ArgNameIpAddresses, "ip-addresses"},
 		{ArgNameGwPassword, "gw-password"},
 		{ArgNameNocallbackVerify, "nocallback-verify"},
-		{ArgNameNoescape, "noescape"},
 		{ArgNameNohangup, "nohangup"},
-		{ArgNameOldPrompts, "old-prompts"},
-		{ArgNameRouting, "routing"},
-		{ArgNameRoute, "route"},
 		{ArgNameSourceIP, "source-ip"},
-		// Accounting AV pairs.
+		{ArgNameTunnelID, "tunnel-id"},
+		// RFC 8907 §8.3 accounting AV pairs (shared by all vendors).
+		{ArgNameBytes, "bytes"},
+		{ArgNamePaks, "paks"},
 		{ArgNameBytesIn, "bytes_in"},
 		{ArgNameBytesOut, "bytes_out"},
 		{ArgNamePaksIn, "paks_in"},
@@ -58,26 +54,14 @@ func TestArgNames(t *testing.T) {
 		{ArgNameStopTime, "stop_time"},
 		{ArgNameEvent, "event"},
 		{ArgNameReason, "reason"},
+		{ArgNameErrMsg, "err_msg"},
 		{ArgNamePort, "port"},
 		{ArgNamePrivLevel, "priv_level"},
-		{ArgNameNasRxSpeed, "nas-rx-speed"},
-		{ArgNameNasTxSpeed, "nas-tx-speed"},
-		{ArgNameMlpLinksMax, "mlp-links-max"},
-		{ArgNameMlpSessID, "mlp-sess-id"},
-		{ArgNamePreSessionTime, "pre-session-time"},
-		// Dual naming: hyphen (Cisco) vs underscore (Huawei).
+		// Dual naming: Cisco hyphen vs Huawei underscore.
 		{ArgNameDiscCause, "disc-cause"},
 		{ArgNameDiscCauseUnderscore, "disc_cause"},
 		{ArgNameDiscCauseExt, "disc-cause-ext"},
 		{ArgNameDiscCauseExtUnderscore, "disc_cause_ext"},
-		// Huawei-specific.
-		{ArgNameDnAverage, "dnaverage"},
-		{ArgNameDnPeak, "dnpeak"},
-		{ArgNameUpAverage, "upaverage"},
-		{ArgNameUpPeak, "uppeak"},
-		{ArgNameTunnelID, "tunnel-id"},
-		{ArgNameTunnelType, "tunnel-type"},
-		{ArgNameFtpDir, "ftpdir"},
 	}
 	for _, c := range cases {
 		assert.Equalf(t, c.value, string(c.name), "constant %q has wrong value", c.value)
