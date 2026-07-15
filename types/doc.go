@@ -11,12 +11,15 @@
 // Constant values follow RFC 8907 ("TACACS+ Protocol"). Each enumeration is a
 // named type so that distinct value spaces cannot be mixed at compile time.
 //
-// The predefined AVP name constants (ArgNameService, ArgNameCmd, ...) cover
-// the attribute-value pairs defined by RFC 8907 (§6 authorization and §8.3
-// accounting arguments, including err_msg), the Cisco IOS XE TACACS+
-// reference, the Huawei HWTACACS attribute table and the vendor-specific
-// attributes of Juniper Junos and Palo Alto Networks PAN-OS; where Cisco
-// and Huawei disagree on the spelling (e.g. disc-cause vs disc_cause) both
-// forms are provided. Disconnect-cause codes are enumerated by DiscCause
-// and DiscCauseExt.
+// The predefined AVP name constants are organized by vendor. avp.go holds the
+// pairs shared by all vendors: the RFC 8907 base set (§6 authorization and §8.3
+// accounting arguments, including err_msg, bytes and paks) plus the Cisco &
+// Huawei common traditional pairs (acl, addr, addr-pool, autocmd, callback-line,
+// dns-servers, gw-password, idletime, ip-addresses, nocallback-verify, nohangup,
+// source-ip, tunnel-id), and the disconnect-cause dual naming (disc-cause vs
+// disc_cause). Vendor-specific pairs live in avp_cisco.go (the full Cisco IOS
+// TACACS+ AV pair reference, including the L2TP/VPDN, SAP, fax and accounting
+// pairs), avp_huawei.go (HWTACACS rate/tunnel/ftp pairs), avp_juniper.go (Junos
+// exec attributes) and avp_paloalto.go (PAN-OS administrator VSAs).
+// Disconnect-cause codes are enumerated by DiscCause and DiscCauseExt.
 package types
