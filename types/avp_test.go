@@ -58,6 +58,7 @@ func TestArgNames(t *testing.T) {
 		{ArgNameStopTime, "stop_time"},
 		{ArgNameEvent, "event"},
 		{ArgNameReason, "reason"},
+		{ArgNameErrMsg, "err_msg"},
 		{ArgNamePort, "port"},
 		{ArgNamePrivLevel, "priv_level"},
 		{ArgNameNasRxSpeed, "nas-rx-speed"},

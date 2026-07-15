@@ -64,6 +64,7 @@ const (
 	ArgNameStopTime       ArgName = "stop_time"
 	ArgNameEvent          ArgName = "event"
 	ArgNameReason         ArgName = "reason"
+	ArgNameErrMsg         ArgName = "err_msg"
 	ArgNamePort           ArgName = "port"
 	ArgNamePrivLevel      ArgName = "priv_level" // accounting uses an underscore
 	ArgNameNasRxSpeed     ArgName = "nas-rx-speed"

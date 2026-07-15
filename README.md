@@ -25,9 +25,10 @@ tool for interoperability testing:
   accounting (start / stop / watchdog) per RFC 8907.
 - Predefined attribute-value pairs: named `ArgName` constants, constructors and
   disconnect-cause enumerations covering the Cisco IOS XE AV pair reference,
-  the Huawei HWTACACS attribute table and the Juniper Junos vendor-specific
-  attributes, including both hyphenated (`disc-cause`) and underscore
-  (`disc_cause`) spellings for cross-vendor interop.
+  the Huawei HWTACACS attribute table, the Juniper Junos vendor-specific
+  attributes and the Palo Alto Networks PAN-OS TACACS+ VSAs (administrator
+  role, access domain, user group), including both hyphenated (`disc-cause`)
+  and underscore (`disc_cause`) spellings for cross-vendor interop.
 - MD5-based body obfuscation (RFC 8907 §4.5) and TLS 1.3 transport (RFC 9887),
   which obsoletes obfuscation over TLS.
 - A YANG-aligned configuration model (RFC 9950) loadable from YAML and JSON.

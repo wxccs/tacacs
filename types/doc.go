@@ -12,8 +12,11 @@
 // named type so that distinct value spaces cannot be mixed at compile time.
 //
 // The predefined AVP name constants (ArgNameService, ArgNameCmd, ...) cover
-// the attribute-value pairs defined by the Cisco IOS XE TACACS+ reference
-// and the Huawei HWTACACS attribute table; where Cisco and Huawei disagree
-// on the spelling (e.g. disc-cause vs disc_cause) both forms are provided.
-// Disconnect-cause codes are enumerated by DiscCause and DiscCauseExt.
+// the attribute-value pairs defined by RFC 8907 (§6 authorization and §8.3
+// accounting arguments, including err_msg), the Cisco IOS XE TACACS+
+// reference, the Huawei HWTACACS attribute table and the vendor-specific
+// attributes of Juniper Junos and Palo Alto Networks PAN-OS; where Cisco
+// and Huawei disagree on the spelling (e.g. disc-cause vs disc_cause) both
+// forms are provided. Disconnect-cause codes are enumerated by DiscCause
+// and DiscCauseExt.
 package types
